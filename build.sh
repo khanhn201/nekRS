@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e -a
+set -a
 
 : ${NRSCONFIG_NOBUILD:=0}
 

@@ -152,6 +152,8 @@ set(NEKRS_GPU_MPI ON CACHE BOOL "Enable GPU aware MPI")
 set(ENABLE_CVODE OFF CACHE BOOL "Enable CVODE support")
 set(ENABLE_ADIOS ON CACHE BOOL "Enable ADIOS support")
 set(ADIOS2_INSTALL_DIR "" CACHE STRING "ADIOS install directory")
+set(ENABLE_SMARTREDIS OFF CACHE BOOL "Enable SmartRedis support")
+set(SMARTREDIS_INSTALL_DIR "" CACHE STRING "SmartRedis install directory")
 set(NEKRS_BUILD_FLOAT ON CACHE BOOL "Build dfloat = float version")
 
 set(ENABLE_CPPTRACE OFF CACHE BOOL "Enable cpptrace for stack tracing")
@@ -240,6 +242,10 @@ if (ENABLE_ADIOS)
   add_adios()
 endif()
 
+if (ENABLE_SMARTREDIS)
+  find_library(SR_LIB smartredis PATHS ${SMARTREDIS_INSTALL_DIR}/lib NO_DEFAULT_PATH REQUIRED)
+endif()
+
 add_subdirectory(3rd_party/lapack)
 
 include(cmake/nek5000.cmake)
@@ -293,6 +299,12 @@ if (ENABLE_ADIOS)
       target_link_libraries(nekrs-lib-fp32 PUBLIC adios2::cxx11_mpi)
       target_compile_definitions(nekrs-lib-fp32 PUBLIC NEKRS_ENABLE_ADIOS)
   endif()
+endif()
+
+if (ENABLE_SMARTREDIS)
+  target_link_libraries(nekrs-lib PUBLIC ${SR_LIB})
+  target_include_directories(nekrs-lib PUBLIC ${SMARTREDIS_INSTALL_DIR}/include)
+  target_compile_definitions(nekrs-lib PUBLIC NEKRS_ENABLE_SMARTREDIS)
 endif()
 
 target_link_libraries(nekrs-bin PRIVATE nekrs-lib)

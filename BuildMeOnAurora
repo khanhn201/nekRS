@@ -21,18 +21,22 @@ export SYCL_ROOT=${CMPROOT}/linux
 
 #... build SmartRedis if enabled
 if [ ${ENABLE_SMARTREDIS} == "ON" ]; then
-  echo -e "\033[35mBuilding SmartRedis first ...\033[m"
-  if [ ! -d "$NEKRS_HOME" ]; then
-    mkdir $NEKRS_HOME
-  fi
-  cd $NEKRS_HOME
-  git clone https://github.com/rickybalin/SmartRedis.git
-  cd SmartRedis
-  pip install -e .
-  make lib
-  cd $NEKRS_BUILD_DIR
-  echo -e "\033[35mDone building SmartRedis\033[m"
-  echo 
+  if [ -f "$NEKRS_HOME/SmartRedis/install/lib64/libsmartredis.so" ]; then
+    echo -e "\033[35mFound SmartRedis at $NEKRS_HOME/SmartRedis/install/lib64/libsmartredis.so\033[m"
+  else
+    echo -e "\033[35mBuilding SmartRedis first ...\033[m"
+    if [ ! -d "$NEKRS_HOME" ]; then
+      mkdir $NEKRS_HOME
+    fi
+    cd $NEKRS_HOME
+    git clone https://github.com/rickybalin/SmartRedis.git
+    cd SmartRedis
+    pip install -e .
+    make lib
+    cd $NEKRS_BUILD_DIR
+    echo -e "\033[35mDone building SmartRedis\033[m"
+    echo
+  fi 
 fi
 #...
 

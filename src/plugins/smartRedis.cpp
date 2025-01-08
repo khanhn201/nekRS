@@ -1,4 +1,4 @@
-#ifdef ENABLE_SMARTREDIS
+#ifdef NEKRS_ENABLE_SMARTREDIS
 
 #include "nrs.hpp"
 #include "nekInterfaceAdapter.hpp"
@@ -37,7 +37,8 @@ void smartredis::init_client(nrs_t *nrs)
   client_ptr = new SmartRedis::Client(cluster_mode, logger_name); // allocates on heap
   MPI_Barrier(platform->comm.mpiComm);
   if (rank == 0)
-    printf("Done\n");
+    printf("All done\n");
+  fflush(stdout);
 }
 
 // Check value of check-run variable to know when to quit
@@ -60,6 +61,7 @@ int smartredis::check_run()
   if (exit_val==0 && platform->comm.mpiRank==0) {
     printf("\nML training says time to quit ...\n");
   }
+  fflush(stdout);
   return exit_val;
 }
 
@@ -78,6 +80,7 @@ void smartredis::init_check_run()
   MPI_Barrier(platform->comm.mpiComm);
   if (rank == 0)
     printf("Put check-run in DB\n\n");
+  fflush(stdout);
 }
 
 // Put step number in DB
@@ -86,17 +89,18 @@ void smartredis::put_step_num(int tstep)
   // Initialize local variables
   int rank = platform->comm.mpiRank;
   std::string key = "step";
-  std::vector<double> step_num(1,0);
+  std::vector<long> step_num(1,0);
   step_num[0] = tstep;
 
   // Send time step to DB
   if (rank == 0)
     printf("\nSending time step number ...\n");
   client_ptr->put_tensor(key, step_num.data(), {1},
-                    SRTensorTypeDouble, SRMemLayoutContiguous);
+                    SRTensorTypeInt64, SRMemLayoutContiguous);
   MPI_Barrier(platform->comm.mpiComm);
   if (rank == 0)
     printf("Done\n\n");
+  fflush(stdout);
 }
 
 // --------------------------------------------------- //
@@ -108,7 +112,8 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
   int rank = platform->comm.mpiRank;
   int size = platform->comm.mpiCommSize;
   std::vector<int> tensor_info(6,0);
-  auto mesh = nrs->meshV;
+  auto mesh = nrs->mesh;
+  auto [xvec, yvec, zvec] = mesh->xyzHost();
 
   if (rank == 0) 
     printf("\nSending training metadata for wall shear stress model ...\n");
@@ -116,7 +121,7 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
   // Loop over mesh coordinates to find wall and off-wall node indices
   std::vector<int> ind_owall_nodes_raw;
   for (int i=0; i<mesh->Nlocal; i++) {
-    const auto y = mesh->y[i];
+    const auto y = yvec[i];
     if (y <= wm->wall_height+wm->eps) {
       wm->ind_wall_nodes.push_back(i);
     }
@@ -127,6 +132,7 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
   int wall_node_ct = wm->ind_wall_nodes.size();
   int owall_node_ct = ind_owall_nodes_raw.size();
   printf("Found %d wall nodes and %d off-wall nodes\n",wall_node_ct, owall_node_ct);
+  fflush(stdout);
   assert(wall_node_ct == owall_node_ct);
   sr->npts_per_tensor = wall_node_ct;
   wm->num_samples = wall_node_ct;
@@ -138,12 +144,12 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
   int pairs = 0;
   for (int i=0; i<wall_node_ct; i++) {
     int ind_w = wm->ind_wall_nodes[i];
-    const auto x_wall = mesh->x[ind_w];
-    const auto z_wall = mesh->z[ind_w];
+    const auto x_wall = xvec[ind_w];
+    const auto z_wall = zvec[ind_w];
     for (int j=0; j<ind_owall_nodes_tmp.size(); j++) {
       int ind_ow = ind_owall_nodes_tmp[j];
-      const auto x_owall = mesh->x[ind_ow];
-      const auto z_owall = mesh->z[ind_ow];
+      const auto x_owall = xvec[ind_ow];
+      const auto z_owall = zvec[ind_ow];
       if ((x_owall>=x_wall-wm->eps && x_owall<=x_wall+wm->eps) && 
           (z_owall>=z_wall-wm->eps && z_owall<=z_wall+wm->eps)) {
         wm->ind_owall_nodes_matched.push_back(ind_ow);
@@ -170,24 +176,28 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
 
   if (rank == 0)
     printf("Done\n\n");
+  fflush(stdout);
 }
 
 // Put training data for wall shear stress model in DB
 void smartredis::put_wallModel_data(nrs_t *nrs, int tstep)
 {
   int rank = platform->comm.mpiRank;
-  int num_samples = wm->num_samples;
-  int num_cols = wm->num_inputs+wm->num_outputs;
+  unsigned long int num_samples = wm->num_samples;
+  unsigned long int num_cols = wm->num_inputs+wm->num_outputs;
+  int size_U = nrs->fieldOffset * nrs->mesh->dim;
   dfloat mue;
   std::string key = "x." + std::to_string(rank) + "." + std::to_string(tstep);
+  dfloat *U = new dfloat[size_U]();
   dfloat *train_data = new dfloat[num_samples*num_cols]();
   dfloat *vel_data = new dfloat[num_samples]();
   dfloat *shear_data = new dfloat[num_samples]();
 
   // Extract velocity at off-wall nodes (inputs)
+  nrs->o_U.copyTo(U, size_U);
   for (int i=0; i<num_samples; i++) {
     int ind = wm->ind_owall_nodes_matched[i];
-    vel_data[i] = nrs->U[ind+0*nrs->fieldOffset];
+    vel_data[i] = U[ind+0*nrs->fieldOffset];
   }
 
   // Extract strain rate at wall and multiply by viscosity to obtain stress
@@ -212,24 +222,28 @@ void smartredis::put_wallModel_data(nrs_t *nrs, int tstep)
   MPI_Barrier(platform->comm.mpiComm);
   if (rank == 0)
     printf("Done\n\n");
+  fflush(stdout);
 }
 
 // Run ML model for inference
 void smartredis::run_wallModel(nrs_t *nrs, int tstep)
 {
   int rank = platform->comm.mpiRank;
-  int num_samples = wm->num_samples;
+  unsigned long int num_samples = wm->num_samples;
+  int size_U = nrs->fieldOffset * nrs->mesh->dim;
   dfloat mue;
   std::string in_key = "x." + std::to_string(rank);
   std::string out_key = "y." + std::to_string(rank);
+  dfloat *U = new dfloat[size_U]();
   dfloat *outputs = new dfloat[num_samples]();
   dfloat *inputs = new dfloat[num_samples]();
   dfloat *targets = new dfloat[num_samples]();
 
   // Extract velocity at off-wall nodes (inputs)
+  nrs->o_U.copyTo(U, size_U);
   for (int i=0; i<num_samples; i++) {
     int ind = wm->ind_owall_nodes_matched[i];
-    inputs[i] = nrs->U[ind+0*nrs->fieldOffset];
+    inputs[i] = U[ind+0*nrs->fieldOffset];
   }
 
   // Extract strain rate at wall and multiply by viscosity to obtain stress
@@ -314,19 +328,24 @@ void smartredis::put_velNpres_data(nrs_t *nrs, int tstep)
 {
   // Initialize local variables
   int rank = platform->comm.mpiRank;
+  unsigned long int nsamples = nrs->fieldOffset;
+  int size_U = nrs->fieldOffset * nrs->mesh->dim;
+  int size_P = nrs->fieldOffset;
   std::string key = "x." + std::to_string(rank) + "." + std::to_string(tstep);
   dfloat *train_data = new dfloat[nrs->fieldOffset * 4]();
-  int size_U = nrs->fieldOffset * 3;
-  int size_P = nrs->fieldOffset;
+  dfloat *U = new dfloat[size_U]();
+  dfloat *P = new dfloat[size_P]();
 
   // Concatenate velocity (inputs) and pressure (output)
-  std::copy(nrs->U,nrs->U+size_U,train_data);
-  std::copy(nrs->P,nrs->P+size_P,train_data+size_U);
+  nrs->o_U.copyTo(U, size_U);
+  nrs->o_P.copyTo(P, size_P);
+  std::copy(U,U+size_U,train_data);
+  std::copy(P,P+size_P,train_data+size_U);
 
   // Send training data to DB
   if (rank == 0)
     printf("\nSending field with key %s \n",key.c_str());
-  client_ptr->put_tensor(key, train_data, {nrs->fieldOffset,4},
+  client_ptr->put_tensor(key, train_data, {nsamples,4},
                     SRTensorTypeDouble, SRMemLayoutContiguous);
   MPI_Barrier(platform->comm.mpiComm);
   if (rank == 0)
@@ -338,15 +357,20 @@ void smartredis::run_pressure_model(nrs_t *nrs, int tstep)
 {
   // Initialize local variables
   int rank = platform->comm.mpiRank;
-  int npts = nrs->fieldOffset;
+  unsigned long int npts = nrs->fieldOffset;
+  int size_U = nrs->fieldOffset * nrs->mesh->dim;
+  int size_P = nrs->fieldOffset;
   std::string in_key = "x." + std::to_string(rank) + "." + std::to_string(tstep);
   std::string out_key = "y." + std::to_string(rank) + "." + std::to_string(tstep);
   dfloat *outputs = new dfloat[npts]();
+  dfloat *U = new dfloat[size_U]();
+  dfloat *P = new dfloat[size_P]();
 
   // Send input data
+  nrs->o_U.copyTo(U, size_U);
   if (rank == 0)
     printf("\nSending field with key %s \n",in_key.c_str());
-  client_ptr->put_tensor(in_key, nrs->U, {npts,3},
+  client_ptr->put_tensor(in_key, U, {npts,3},
                     SRTensorTypeDouble, SRMemLayoutContiguous);
   MPI_Barrier(platform->comm.mpiComm);
   if (rank == 0)
@@ -371,8 +395,9 @@ void smartredis::run_pressure_model(nrs_t *nrs, int tstep)
 
   // Compute error in prediction
   double error = 0.0;
+  nrs->o_P.copyTo(P, size_P);
   for (int n=0; n<npts; n++) {
-    error = error + (outputs[n] - nrs->P[n])*(outputs[n] - nrs->P[n]);
+    error = error + (outputs[n] - P[n])*(outputs[n] - P[n]);
     //printf("True, Pred, Error: %f, %f, %f \n",nrs->P[n],outputs[n],error);
   }
   error = error / npts;

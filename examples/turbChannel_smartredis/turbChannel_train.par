@@ -1,15 +1,15 @@
 [GENERAL]
 #verbose = true
 polynomialOrder = 7
-startFrom = "restart.fld"
+#startFrom = "restart.fld"
 stopAt = endTime
 endTime = 400
 
 dt = targetCFL=2 + max=2e-2 + initial=5e-3
 timeStepper = tombo2
 
-writeControl = simulationTime 
-writeInterval = 20
+checkpointControl = simulationTime 
+checkpointInterval = 20
 
 regularization = hpfrt + nModes=1 + scalingCoeff=5
 #constFlowRate = meanVelocity=1.0 + direction=X
@@ -18,9 +18,9 @@ regularization = hpfrt + nModes=1 + scalingCoeff=5
 residualTol = 1e-04
 
 [VELOCITY]
-boundaryTypeMap = wall
+boundaryTypeMap = zeroValue 
 viscosity = 1/10000
-density = 1.0
+rho = 1.0
 residualTol = 1e-06
 
 [CASEDATA]

@@ -18,6 +18,7 @@ set(INCLUDE_DIRS
   ${GSDIR}/gslib/include
   ${NEKRS_INSTALL_DIR}/occa/include
   ${NEKRS_INSTALL_DIR}/include
+  ${NEKRS_INSTALL_DIR}/include/lib
   ${NEKRS_INSTALL_DIR}/include/mesh
   ${NEKRS_INSTALL_DIR}/include/core
   ${NEKRS_INSTALL_DIR}/include/core/io
@@ -66,7 +67,7 @@ if(APPLE)
 endif()
 
 foreach(LIB $ENV{NEKRS_UDF_LIBS})
- target_link_libraries(udf PRIVATE ${LIB}) 
+ target_link_libraries(udf PRIVATE ${LIB})
 endforeach()
 
 #foreach(PATH $ENV{NEKRS_UDF_RPATH})

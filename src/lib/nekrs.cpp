@@ -107,6 +107,12 @@ void reset()
   enforceCheckpointStep = 0;
 }
 
+void forceLastStep()
+{
+  enforceLastStep = 1;
+  enforceCheckpointStep = 1;
+}
+
 double startTime(void)
 {
   double val = 0;
@@ -480,6 +486,11 @@ void checkpointStep(int val)
 void writeCheckpoint(double time, int step)
 {
   nrs->writeCheckpoint(time, step);
+}
+
+void setEndTime(double time)
+{
+  platform->options.setArgs("END TIME", to_string_f(time));
 }
 
 double endTime(void)

@@ -10,7 +10,7 @@ module list
 #... set some environment variables
 NEKRS_BUILD_DIR=$PWD
 ENABLE_SMARTREDIS=ON
-export NEKRS_HOME=/gila/Aurora_deployment/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks
+export NEKRS_HOME=/flare/Aurora_deployment/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks
 export CC=mpicc
 export CXX=mpic++
 export FC=mpif77
@@ -26,7 +26,7 @@ if [ ${ENABLE_SMARTREDIS} == "ON" ]; then
   else
     echo -e "\033[35mBuilding SmartRedis first ...\033[m"
     if [ ! -d "$NEKRS_HOME" ]; then
-      mkdir $NEKRS_HOME
+      mkdir -p $NEKRS_HOME
     fi
     cd $NEKRS_HOME
     git clone https://github.com/rickybalin/SmartRedis.git

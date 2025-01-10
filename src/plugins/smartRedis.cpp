@@ -158,7 +158,7 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
       }
     }
   }
-  printf("Found %d paris of wall nodes and off-wall nodes\n",pairs);
+  printf("Found %d pairs of wall nodes and off-wall nodes\n",pairs);
 
   // Create and send metadata for training
   tensor_info[0] = sr->npts_per_tensor;

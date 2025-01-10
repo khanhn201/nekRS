@@ -171,7 +171,7 @@ def launch_clDB(cfg, nodelist, nNodes):
         'maxclients': 100000,
         'threads_per_queue': 4, # set to 4 for improved performance
         'inter_op_parallelism': 1,
-        'intra_op_parallelism': cfg.run_args.cores_pn,
+        'intra_op_parallelism': 4,
         'cluster-node-timeout': 30000,
         }
     if (cfg.database.launcher=='local'): run_command = 'mpirun'
@@ -282,7 +282,7 @@ def launch_clDB(cfg, nodelist, nNodes):
 
 
 ## Main function
-@hydra.main(version_base=None, config_path="./conf", config_name="ssim_config")
+@hydra.main(version_base=None, config_path="./", config_name="ssim_config")
 def main(cfg: DictConfig):
     # Get nodes of this allocation (job)
     nodelist = nNodes = None

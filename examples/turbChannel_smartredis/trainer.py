@@ -356,13 +356,14 @@ def main():
     # Save model to file before exiting
     model = model.module
     model.eval()
+    model.to('cpu')
     if (rank == 0):
         model.double()
         model_name = "model"
         torch.save(model.state_dict(), f"{model_name}.pt", _use_new_zipfile_serialization=False)
         # save jit traced model to be used for online inference with SmartSim
         features = np.double(np.random.uniform(low=0, high=10, size=(npts,ndIn)))
-        features = torch.from_numpy(features).to(args.device)
+        features = torch.from_numpy(features)
         module = torch.jit.trace(model, features)
         torch.jit.save(module, f"{model_name}_jit.pt")
         print("Saved model to disk\n", flush=True)

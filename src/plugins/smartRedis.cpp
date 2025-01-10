@@ -289,6 +289,7 @@ void smartredis::run_wallModel(nrs_t *nrs, int tstep)
   error = error / num_samples;
   printf("[%d]: Mean Squared Error in wall shear stress field = %E\n\n",rank,error);
   fflush(stdout);
+  MPI_Barrier(platform->comm.mpiComm);
 }
 
 // --------------------------------------------------- //

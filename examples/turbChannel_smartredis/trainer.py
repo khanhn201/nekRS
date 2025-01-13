@@ -290,13 +290,11 @@ def main():
 
     # Instantiate the NN model and optimizer
     model = NeuralNetwork(inputDim=ndIn, outputDim=ndOut, numNeurons=nNeurons)
+    model = DDP(model) 
     if (args.device != 'cpu'):
         model.to(args.device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate*size)
     
-    # Wrap model with DDP
-    model = DDP(model) 
-
     # Training setup and variable initialization
     istep = -1 # initialize the simulation step number to -1
     step_list = [] # initialize an empty list containing all the steps sent

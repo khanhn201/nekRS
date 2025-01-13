@@ -98,11 +98,13 @@ echo "# Run config" >> $CFILE
 echo "run_args:" >> $CFILE
 echo "    nodes: ${qnodes}" >> $CFILE
 if [ ${DEPLOYMENT} == "colocated"  ]; then
-  SIM_PROCS=$(( nodes * SIM_RANKS_PER_NODE ))
-  TRAIN_PROCS=$(( nodes * TRAIN_RANKS_PER_NODE ))
+  SIM_NODES=$nodes
+  TRAIN_NODES=$nodes
+  SIM_PROCS=$(( SIM_NODES * SIM_RANKS_PER_NODE ))
+  TRAIN_PROCS=$(( TRAIN_NODES * TRAIN_RANKS_PER_NODE ))
   echo "    db_nodes: 1" >> $CFILE
-  echo "    sim_nodes: ${nodes}" >> $CFILE
-  echo "    ml_nodes: ${nodes}" >> $CFILE
+  echo "    sim_nodes: ${SIM_NODES}" >> $CFILE
+  echo "    ml_nodes: ${SIM_NODES}" >> $CFILE
   echo "    simprocs: ${SIM_PROCS}" >> $CFILE
   echo "    simprocs_pn: ${SIM_RANKS_PER_NODE}" >> $CFILE
   echo "    mlprocs: ${TRAIN_PROCS}" >> $CFILE
@@ -168,6 +170,21 @@ elif [ ${ML_TASK} == "inference"  ]; then
   echo "    copy_files: []" >> $CFILE
   echo "    link_files: []" >> $CFILE
 fi
+
+#--------------------------------------
+# Update the .par file with the ML options
+PFILE=${case}.par
+echo "" >> $PFILE
+echo "[ML]" >> $PFILE
+echo "ssimDeployment = ${DEPLOYMENT}" >> $PFILE
+echo "ssimDbNodes = ${DB_NODES}" >> $PFILE
+
+#--------------------------------------
+# Update the .box file to increase the mesh size linearly with the number of nodes
+NX=$(( 36*SIM_NODES ))
+NZ=$(( 18*SIM_NODES ))
+sed -i "s/NX/${NX}/g" ${case}.box
+sed -i "s/NZ/${NZ}/g" ${case}.box
 
 #--------------------------------------
 # Generate the run script

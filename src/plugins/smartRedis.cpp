@@ -19,11 +19,18 @@ void smartredis::init_client(nrs_t *nrs)
   int size = platform->comm.mpiCommSize;
 
   // Replace this with variable in .par file
-  sr->npts_per_tensor = nrs->fieldOffset;
+  platform->options.getArgs("SSIM DB DEPLOYMENT",sr->deployment);
   sr->num_tot_tensors = size;
-  sr->num_db_tensors = size;
-  sr->head_rank = 0;
-  sr->db_nodes = 1;
+  if (sr->deployment == "colocated") {
+    sr->num_db_tensors = std::stoi(getenv("PALS_LOCAL_SIZE"));
+    if (rank%sr->num_db_tensors == 0)
+      sr->head_rank = rank;
+    sr->db_nodes = 1;
+  } else if (sr->deployment == "clustered") {
+    sr->num_db_tensors = size;
+    sr->head_rank = 0;
+    platform->options.getArgs("SSIM DB NODES",sr->db_nodes);
+  }
 
   // Initialize SR client
   if (rank == 0)
@@ -158,7 +165,7 @@ void smartredis::init_wallModel_train(nrs_t *nrs)
       }
     }
   }
-  printf("Found %d pairs of wall nodes and off-wall nodes\n",pairs);
+  //printf("Found %d pairs of wall nodes and off-wall nodes\n",pairs);
 
   // Create and send metadata for training
   tensor_info[0] = sr->npts_per_tensor;
@@ -290,120 +297,6 @@ void smartredis::run_wallModel(nrs_t *nrs, int tstep)
   printf("[%d]: Mean Squared Error in wall shear stress field = %E\n\n",rank,error);
   fflush(stdout);
   MPI_Barrier(platform->comm.mpiComm);
-}
-
-// --------------------------------------------------- //
-// ----- Pressure Model ------------------------------ //
-// --------------------------------------------------- //
-// Initialize training for the velocity-pressure model
-void smartredis::init_velNpres_train(nrs_t *nrs)
-{
-  // Initialize local variables
-  int rank = platform->comm.mpiRank;
-  int size = platform->comm.mpiCommSize;
-
-  if (rank == 0) 
-    printf("\nSending training metadata for velocity-pressure model ...\n");
-
-  // Create and send metadata for training
-  std::vector<int> tensor_info(6,0);
-  tensor_info[0] = sr->npts_per_tensor;
-  tensor_info[1] = sr->num_tot_tensors;
-  tensor_info[2] = sr->num_db_tensors;
-  tensor_info[3] = sr->head_rank;
-  tensor_info[4] = 3; // number of model inputs
-  tensor_info[5] = 1; // number of model outputs
-  std::string info_key = "tensorInfo";
-  if (rank%sr->num_db_tensors == 0) {
-    client_ptr->put_tensor(info_key, tensor_info.data(), {6},
-                    SRTensorTypeInt32, SRMemLayoutContiguous);
-  }
-  MPI_Barrier(platform->comm.mpiComm);
-
-  if (rank == 0)
-    printf("Done\n\n");
-}
-
-// Put velocity and pressure data in DB
-void smartredis::put_velNpres_data(nrs_t *nrs, int tstep)
-{
-  // Initialize local variables
-  int rank = platform->comm.mpiRank;
-  unsigned long int nsamples = nrs->fieldOffset;
-  int size_U = nrs->fieldOffset * nrs->mesh->dim;
-  int size_P = nrs->fieldOffset;
-  std::string key = "x." + std::to_string(rank) + "." + std::to_string(tstep);
-  dfloat *train_data = new dfloat[nrs->fieldOffset * 4]();
-  dfloat *U = new dfloat[size_U]();
-  dfloat *P = new dfloat[size_P]();
-
-  // Concatenate velocity (inputs) and pressure (output)
-  nrs->o_U.copyTo(U, size_U);
-  nrs->o_P.copyTo(P, size_P);
-  std::copy(U,U+size_U,train_data);
-  std::copy(P,P+size_P,train_data+size_U);
-
-  // Send training data to DB
-  if (rank == 0)
-    printf("\nSending field with key %s \n",key.c_str());
-  client_ptr->put_tensor(key, train_data, {nsamples,4},
-                    SRTensorTypeDouble, SRMemLayoutContiguous);
-  MPI_Barrier(platform->comm.mpiComm);
-  if (rank == 0)
-    printf("Done\n\n");
-}
-
-// Run a ML model for inference
-void smartredis::run_pressure_model(nrs_t *nrs, int tstep)
-{
-  // Initialize local variables
-  int rank = platform->comm.mpiRank;
-  unsigned long int npts = nrs->fieldOffset;
-  int size_U = nrs->fieldOffset * nrs->mesh->dim;
-  int size_P = nrs->fieldOffset;
-  std::string in_key = "x." + std::to_string(rank) + "." + std::to_string(tstep);
-  std::string out_key = "y." + std::to_string(rank) + "." + std::to_string(tstep);
-  dfloat *outputs = new dfloat[npts]();
-  dfloat *U = new dfloat[size_U]();
-  dfloat *P = new dfloat[size_P]();
-
-  // Send input data
-  nrs->o_U.copyTo(U, size_U);
-  if (rank == 0)
-    printf("\nSending field with key %s \n",in_key.c_str());
-  client_ptr->put_tensor(in_key, U, {npts,3},
-                    SRTensorTypeDouble, SRMemLayoutContiguous);
-  MPI_Barrier(platform->comm.mpiComm);
-  if (rank == 0)
-    printf("Done\n\n");
-
-  // Run ML model on input data
-  if (rank == 0)
-    printf("\nRunning ML model ...\n");
-  client_ptr->run_model("model", {in_key}, {out_key});
-  MPI_Barrier(platform->comm.mpiComm);
-  if (rank == 0)
-    printf("Done\n\n");
-
-  // Retrieve model pedictions
-  if (rank == 0)
-    printf("\nRetrieving field with key %s \n",out_key.c_str());
-  client_ptr->unpack_tensor(out_key, outputs, {npts},
-                       SRTensorTypeDouble, SRMemLayoutContiguous);
-  MPI_Barrier(platform->comm.mpiComm);
-  if (rank == 0)
-    printf("Done\n\n");
-
-  // Compute error in prediction
-  double error = 0.0;
-  nrs->o_P.copyTo(P, size_P);
-  for (int n=0; n<npts; n++) {
-    error = error + (outputs[n] - P[n])*(outputs[n] - P[n]);
-    //printf("True, Pred, Error: %f, %f, %f \n",nrs->P[n],outputs[n],error);
-  }
-  error = error / npts;
-  printf("[%d]: Mean Squared Error in pressure field = %f\n\n",rank,error);
-  fflush(stdout);
 }
 
 #endif

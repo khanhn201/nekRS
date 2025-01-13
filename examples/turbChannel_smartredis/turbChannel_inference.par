@@ -31,4 +31,4 @@ zLength = 3.141592653
 betaY = 2.2
 
 [MESH]
-partitioner=rcb
+partitioner = uniformz

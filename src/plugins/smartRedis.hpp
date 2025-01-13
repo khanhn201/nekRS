@@ -6,6 +6,7 @@
 #include <vector>
 
 struct smartredis_data {
+  std::string deployment; // deployment type for DB
   int npts_per_tensor; // number of points (samples) per tensor being sent to DB
   int num_tot_tensors; // number of total tensors being sent to all DB
   int num_db_tensors; // number of tensors being sent to each DB
@@ -33,9 +34,6 @@ namespace smartredis
   void init_wallModel_train(nrs_t *nrs);
   void put_wallModel_data(nrs_t *nrs, int tstep);
   void run_wallModel(nrs_t *nrs, int tstep);
-  void init_velNpres_train(nrs_t *nrs);
-  void put_velNpres_data(nrs_t *nrs, int tstep);
-  void run_pressure_model(nrs_t *nrs, int tstep);
 }
 
 #endif

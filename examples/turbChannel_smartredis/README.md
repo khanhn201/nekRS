@@ -89,5 +89,5 @@ The script generate the config file for the workflow (`ssim_config.yaml`) and th
 The outputs of the nekRS and trainer will be within the `./nekRS` directory created at runtime.
 
 ## Known Issues and Tips
-- The clustered deployment requires at least 3 nodes for training and 2 nodes for inference since it deploys each component on a distinct set of nodes. Also note that the SmartSim database can be run on a single node or sharded across multiple nodes (>=3).
+- The clustered deployment requires at least 3 nodes for training and 2 nodes for inference since it deploys each component on a distinct set of nodes. Also note that the SmartSim database can be run on a single node or sharded across 3 or more nodes (sharding across 2 nodes is not allowed). 
 - On Aurora, inference can only be run on the CPU. nekRS will still run on the GPU, but model inference will be executed on the host. This is due to a limitation of RedisAI on Intel hardware.

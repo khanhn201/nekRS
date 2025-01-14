@@ -23,6 +23,9 @@ void writeToFile(const std::string& filename, T* data, int nRows, int nCols);
 template <typename T> 
 void writeToFileBinary(const std::string& filename, T* data, int nRows, int nCols); 
 
+void writeToFileF(const std::string& filename, dfloat* data, int nRows, int nCols); 
+void writeToFileBinaryF(const std::string& filename, dfloat* data, int nRows, int nCols); 
+
 int compareBaseId(const void *a, const void *b);
 int compareLocalId(const void *a, const void *b);  
 

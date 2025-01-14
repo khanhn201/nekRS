@@ -28,6 +28,11 @@ void writeToFile(const std::string& filename, T* data, int nRows, int nCols)
     }
 }
 
+void writeToFileF(const std::string& filename, dfloat* data, int nRows, int nCols)
+{
+    writeToFile(filename, data, nRows, nCols);
+}
+
 template <typename T>
 void writeToFileBinary(const std::string& filename, T* data, int nRows, int nCols)
 {
@@ -48,6 +53,11 @@ void writeToFileBinary(const std::string& filename, T* data, int nRows, int nCol
             file_cpu.write(reinterpret_cast<const char*>(&data[index]), sizeof(T));
         }
     }
+}
+
+void writeToFileBinaryF(const std::string& filename, dfloat* data, int nRows, int nCols)
+{
+    writeToFileBinary(filename, data, nRows, nCols);
 }
 
 gnn_t::gnn_t(nrs_t *nrs_)

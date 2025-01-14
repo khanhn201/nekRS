@@ -1,0 +1,3 @@
+#!/bin/bash
+
+rm -r gnn_outputs_poly_3

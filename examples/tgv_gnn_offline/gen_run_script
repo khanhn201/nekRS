@@ -1,0 +1,28 @@
+#!/bin/bash
+set -a
+
+SYSTEM="aurora"
+NEKRS_HOME="/flare/Aurora_deployment/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
+VENV_PATH="/flare/Aurora_deployment/balin/Nek/nekRSv24/venv/_ssim_env/bin/activate"
+PROJ_ID="Aurora_deployment"
+QUEUE="lustre_scaling"
+
+if [ ${SYSTEM} == "aurora" ]; then
+  module load frameworks
+fi
+source ${VENV_PATH}
+
+echo "Setting up case:"
+echo "    system: ${SYSTEM}"
+echo "    venv: ${VENV_PATH}"
+echo
+
+script_name=nrsrun_${SYSTEM}
+NODES=`cat $PBS_NODEFILE | wc -l`
+
+NEKRS_HOME=$NEKRS_HOME \
+PROJ_ID=$PROJ_ID \
+QUEUE=$QUEUE \
+VENV_PATH=$VENV_PATH \
+./${script_name} tgv $NODES 00:30
+

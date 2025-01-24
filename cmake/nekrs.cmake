@@ -91,6 +91,7 @@ set(NRS_SRC
     src/plugins/smartRedis.cpp
     src/plugins/gnn.cpp
     src/plugins/gnn_connectivity.cpp
+    src/plugins/trajGen.cpp
     src/nrs/plugins/velRecycling.cpp
     src//nrs/plugins/RANSktau.cpp
     src/nrs/plugins/lowMach.cpp

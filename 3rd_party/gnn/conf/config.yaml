@@ -1,21 +1,10 @@
 # @package _global_
-profile: False
-halo_test: True
 verbose: False
 seed: 12
-#epochs: 100
-phase1_steps: 100
-phase2_steps: 0
-phase3_steps: 0
-lr_phase12: 0.0001
-lr_phase23: 0.0001
-backend: "nccl"
-#lr_init: 0.0001
-# momentum: 0.5
-use_noise : True
+backend: nccl
 num_threads: 0
-logfreq: 1
-ckptfreq: 5
+logfreq: 10
+ckptfreq: 500
 batch_size: 1
 val_batch_size: 1
 fp16_allreduce: False
@@ -23,11 +12,20 @@ restart: False
 master_addr: none
 master_port: none
 
-# Modeling task
+# train a time dependent or independent model
 model_task: "time independent" # {time_independent, time series}
+
+# use residual when training. if true: pred = x_in + gnn. if false: pred = gnn 
 use_residual: False
 
-# arch properties -- large gnn 
+# learning rate schedule 
+phase1_steps: 100 
+phase2_steps: 0
+phase3_steps: 0
+lr_phase12: 0.0001
+lr_phase23: 0.0001
+
+# arch properties 
 hidden_channels: 32
 n_mlp_hidden_layers: 5
 n_messagePassing_layers: 4
@@ -36,10 +34,10 @@ n_messagePassing_layers: 4
 rollout_steps: 1
 
 # Halo swap mode 
-halo_swap_mode: none
+halo_swap_mode : none
 
 # plotting the connecivity (can take some time)
-plot_connectivity: False
+plot_connectivity : False
 
 hydra:
   job:
@@ -62,13 +60,10 @@ ckpt_dir: ${work_dir}/ckpt/
 model_dir: ${work_dir}/saved_models/ 
 # path to save profile data  
 profile_dir: ${work_dir}/outputs/profiles/new_timers/ 
+# path to save inference results 
+inference_dir: ${work_dir}/outputs/inference/
 
 
 # specify path to gnn_outputs here (case directory)  
-gnn_outputs_path: ${hydra:runtime.cwd}/gnn_outputs_poly_7/
-traj_data_path: ${hydra:runtime.cwd}/traj_poly_1/
-
-
-
-
-
+gnn_outputs_path: ${work_dir}/gnn_outputs_poly_7/
+traj_data_path: ${work_dir}/traj_poly_1/

@@ -17,7 +17,7 @@ void deleteDirectoryContents(const std::filesystem::path& dir)
 trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, dfloat time_init_)
 {
     nrs = nrs_; // set nekrs object
-    mesh = nrs->meshV; // set mesh object
+    mesh = nrs->mesh; // set mesh object
     dt_factor = dt_factor_; 
     time_init = time_init_; 
 
@@ -75,16 +75,21 @@ void trajGen_t::trajGenWrite(dfloat time, int tstep)
         // ~~~~ Write the data
         if ((tstep%dt_factor)==0)
         {
-            nek::ocopyToNek(time, tstep);
+            //nek::ocopyToNek(time, tstep);
+            dfloat *U = new dfloat[nrs->mesh->dim * nrs->fieldOffset]();
+            dfloat *P = new dfloat[nrs->fieldOffset]();
+            nrs->o_U.copyTo(U, nrs->mesh->dim * nrs->fieldOffset);
+            nrs->o_P.copyTo(P, nrs->fieldOffset);
+            
             // print stuff
             if (platform->comm.mpiRank == 0) {
                 if (verbose) printf("[TRAJ WRITE] -- In tstep %d, at physical time %g \n", tstep, time);
             }
             // write data
-            writeToFileBinary(writePath + "/u_step_" + std::to_string(tstep) + ".bin",
-                    nrs->U, nrs->fieldOffset, 3);
-            writeToFileBinary(writePath + "/p_step_" + std::to_string(tstep) + ".bin",
-                    nrs->P, nrs->fieldOffset, 1);
+            writeToFileBinaryF(writePath + "/u_step_" + std::to_string(tstep) + ".bin",
+                    U, nrs->fieldOffset, 3);
+            writeToFileBinaryF(writePath + "/p_step_" + std::to_string(tstep) + ".bin",
+                    P, nrs->fieldOffset, 1);
         }
     }
 }

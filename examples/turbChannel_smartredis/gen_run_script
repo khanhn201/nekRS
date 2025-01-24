@@ -12,7 +12,24 @@ QUEUE="lustre_scaling"
 if [ ${SYSTEM} == "aurora" ]; then
   module load frameworks
 fi
-source ${VENV_PATH}
+
+if [ -z $VENV_PATH ]; then
+  echo -e "\033[35mA Python venv was not specified, building one now ...\033[m"
+  python -m venv --clear _ssim --system-site-packages
+  source _ssim/bin/activate
+  
+  export TORCH_CMAKE_PATH=$( python -c 'import torch;print(torch.utils.cmake_prefix_path)' )
+  export TORCH_PATH=$( python -c 'import torch; print(torch.__path__[0])' )
+  export LD_LIBRARY_PATH=$TORCH_PATH/lib:$LD_LIBRARY_PATH
+  git clone https://github.com/rickybalin/SmartSim.git
+  cd SmartSim
+  git checkout rollback_aurora
+  pip install -e .
+  smart build -v --device cpu --torch_dir $TORCH_CMAKE_PATH --no_tf
+  smart validate
+  cd ..
+  VENV_PATH=${PWD}/_ssim/bin/activate
+fi
 
 echo "Setting up case:"
 echo "    system: ${SYSTEM}"

@@ -70,12 +70,12 @@ SMALL = 1e-12
 
 # Get MPI:
 if WITH_DDP:
+    COMM = MPI.COMM_WORLD
+    SIZE = COMM.Get_size()
+    RANK = COMM.Get_rank()
     LOCAL_RANK = int(os.getenv("PALS_LOCAL_RANKID"))
     #LOCAL_RANK = os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK', '0')
     # LOCAL_RANK = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
-    SIZE = MPI.COMM_WORLD.Get_size()
-    RANK = MPI.COMM_WORLD.Get_rank()
-    COMM = MPI.COMM_WORLD
 
     try:
         WITH_CUDA = torch.cuda.is_available()
@@ -313,9 +313,9 @@ class Trainer:
         # ~~~~ Set the total number of training iterations 
         self.total_iterations = self.cfg.phase1_steps + self.cfg.phase2_steps + self.cfg.phase3_steps
 
-        # ~~~~ Init training and testing loss history 
+        # ~~~~ Init training and validation loss history 
         self.loss_hist_train = np.zeros(self.total_iterations)
-        self.loss_hist_test = np.zeros(self.total_iterations)
+        self.loss_hist_val = np.zeros(self.total_iterations)
 
         # ~~~~ Set model and checkpoint savepaths 
         try:
@@ -332,17 +332,17 @@ class Trainer:
             self.model.load_state_dict(ckpt['model_state_dict'])
             self.iteration = ckpt['iteration'] + 1
             self.loss_hist_train = ckpt['loss_hist_train']
-            self.loss_hist_test = ckpt['loss_hist_test']
+            self.loss_hist_val = ckpt['loss_hist_val']
 
             if len(self.loss_hist_train) < self.total_iterations:
                 loss_hist_train_new = np.zeros(self.total_iterations)
-                loss_hist_test_new = np.zeros(self.total_iterations)
+                loss_hist_val_new = np.zeros(self.total_iterations)
 
                 loss_hist_train_new[:len(self.loss_hist_train)] = self.loss_hist_train
-                loss_hist_test_new[:len(self.loss_hist_test)] = self.loss_hist_test
+                loss_hist_val_new[:len(self.loss_hist_val)] = self.loss_hist_val
 
                 self.loss_hist_train = loss_hist_train_new
-                self.loss_hist_test = loss_hist_test_new
+                self.loss_hist_val = loss_hist_val_new
 
         # ~~~~ Set loss function
         self.loss_fn = nn.MSELoss()
@@ -400,7 +400,7 @@ class Trainer:
                     'model_state_dict' : sd,
                     'optimizer_state_dict' : self.optimizer.state_dict(),
                     'loss_hist_train' : self.loss_hist_train,
-                    'loss_hist_test' : self.loss_hist_test}
+                    'loss_hist_val' : self.loss_hist_val}
             torch.save(ckpt, self.ckpt_path + f".{self.iteration}")
             torch.save(ckpt, self.ckpt_path)
             t_ckpt = time.time() - t_ckpt
@@ -432,7 +432,7 @@ class Trainer:
                         'state_dict' : sd,
                         'input_dict' : ind,
                         'loss_hist_train' : self.loss_hist_train,
-                        'loss_hist_test' : self.loss_hist_test,
+                        'loss_hist_val' : self.loss_hist_val,
                         'iteration' : self.iteration,
                         }
             torch.save(save_dict, self.model_path)
@@ -658,12 +658,12 @@ class Trainer:
         """
         main_path = self.cfg.gnn_outputs_path 
 
-        path_to_pos_full = main_path + 'pos_node_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_ei = main_path + 'edge_index_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_overlap = main_path + 'overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_glob_ids = main_path + 'global_ids_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_unique_local = main_path + 'local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_unique_halo = main_path + 'halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_pos_full = main_path + '/pos_node_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_ei = main_path + '/edge_index_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_overlap = main_path + '/overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_glob_ids = main_path + '/global_ids_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_unique_local = main_path + '/local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_unique_halo = main_path + '/halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
         
         # ~~~~ Get positions and global node index
         if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
@@ -738,8 +738,8 @@ class Trainer:
         return 
 
 
-    def prepare_snapshot_data(self, path_to_snap: str):
-        data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,3)) 
+    def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
+        data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,n_colms)) 
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
          
         # Retain only N_gll = Np*Ne elements
@@ -756,73 +756,14 @@ class Trainer:
         x = torch.tensor(data_x_reduced)
         x = torch.cat((x, data_x_halo), dim=0)
         return x
-        
-    def setup_data(self):
-        """
-        Generate the PyTorch Geometric Dataset 
-        """
-        if RANK == 0:
-            log.info('In setup_data...')
 
-        device_for_loading = 'cpu'
-
-        # data directory
-        dtfac = 10
-        data_dir = self.cfg.traj_data_path + f"/tinit_75.000000_dtfactor_{dtfac}/data_rank_{RANK}_size_{SIZE}"
-        #data_dir = self.cfg.traj_data_path + f"/tinit_85.000000_dtfactor_{dtfac}/data_rank_{RANK}_size_{SIZE}"
-
-        # read files and remove pressure
-        files_temp = os.listdir(data_dir)
-        files = [item for item in files_temp if 'p_step' not in item] 
-        files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
-
-        # populate dataset for single-step predictions 
-        idx = list(range(len(files)))
-        idx_x = idx[:-1]
-        idx_y = idx[1:]
-        data_traj = []
-        if RANK == 0: log.info("Loading trajectory data...")
-        for i in range(len(idx_x)):
-            step_x_i = idx_x[i]
-            step_y_i = idx_y[i]
-            path_x_i = data_dir + "/" + files[idx_x[i]]
-            path_y_i = data_dir + "/" + files[idx_y[i]]
-            data_x_i = self.prepare_snapshot_data(path_x_i)
-            data_y_i = self.prepare_snapshot_data(path_y_i)
-            data_traj.append(
-                    {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
-                    )
-
-        # split into train/test 
-        fraction_valid = 0.1
-        if fraction_valid > 0:
-            # How many total snapshots to extract 
-            n_full = len(idx_x)
-            n_valid = int(np.floor(fraction_valid * n_full))
-
-            # Get validation set indices 
-            idx_valid = np.sort(np.random.choice(n_full, n_valid, replace=False))
-
-            # Get training set indices 
-            idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
-
-            # Train/test split 
-            data_traj_train = [data_traj[i] for i in idx_train]
-            data_traj_valid = [data_traj[i] for i in idx_valid]
-        else:
-            data_traj_train = data_traj
-            data_traj_valid = [{}]
-
-        if RANK == 0: log.info(f"Number of training snapshots: {len(idx_train)}")
-        if RANK == 0: log.info(f"Number of validation snapshots: {len(idx_valid)}")
-
-        # Get training data statistics: mean and standard deviation for each node feature  
-        n_features = data_traj_train[0]['x'].shape[1]
+    def compute_statistics(self, data_list: list, var: str):
+        n_features = data_list[0][var].shape[1]
         n_nodes_local = self.data_reduced.n_nodes_local
-        n_snaps = len(data_traj_train)
+        n_snaps = len(data_list)
         x_full = torch.zeros((n_snaps, n_nodes_local, n_features), dtype=TORCH_FLOAT_DTYPE)
-        for i in range(len(data_traj_train)):
-            x_full[i,:,:] = data_traj_train[i]['x'][:n_nodes_local, :]
+        for i in range(len(data_list)):
+            x_full[i,:,:] = data_list[i][var][:n_nodes_local, :]
         data_mean_ = x_full.mean(axis=(0,1)).to(self.device)
         data_var_ = x_full.var(axis=(0,1)).to(self.device)
         n_scale_ = torch.tensor([n_nodes_local * n_snaps], dtype=TORCH_FLOAT_DTYPE, device=self.device)
@@ -840,28 +781,160 @@ class Trainer:
         data_var_gather = torch.stack(data_var_gather)
         n_scale_gather = torch.stack(n_scale_gather)
 
-        # final mean: 
         data_mean = torch.sum(n_scale_gather * data_mean_gather, axis=0)/torch.sum(n_scale_gather)
         data_mean = data_mean.unsqueeze(0)
             
-        # final std:
         num_1 = torch.sum(n_scale_gather * data_var_gather, axis=0) # n_i * var_i
         num_2 = torch.sum(n_scale_gather * (data_mean_gather - data_mean)**2, axis=0)
         data_var = (num_1 + num_2)/torch.sum(n_scale_gather)
         data_std = torch.sqrt(data_var)
         data_std = data_std.unsqueeze(0)
+        return data_mean, data_std
+
+    def load_field_data(self, data_dir: str):
+        input_field = 'u' # velocity
+        output_field = 'p' # pressure
+
+        # read files
+        files_temp = os.listdir(data_dir)
+        input_files = [item for item in files_temp \
+                       if (f'fld_{input_field}' in item) and (f'rank_{RANK}' in item)]
+        input_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
+        output_files = [item for item in files_temp \
+                        if (f'fld_{output_field}' in item) and (f'rank_{RANK}' in item)]
+        output_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
+        assert len(input_files) == len(output_files), \
+            'ERROR: found different number of input and output files'
+
+        # populate dataset
+        if RANK == 0: log.info("Loading field data...")
+        data_list = []
+        for i in range(len(input_files)):
+            path_x = data_dir + '/' + input_files[i]
+            path_y = data_dir + '/' + output_files[i]
+            data_x = self.prepare_snapshot_data(path_x, 3)
+            data_y = self.prepare_snapshot_data(path_y, 1)
+            data_list.append({'x': data_x, 'y':data_y})
+
+        # split into train/validation
+        fraction_valid = 0.1
+        if fraction_valid > 0 and len(data_list)*fraction_valid > 1:
+            # How many total snapshots to extract
+            n_full = len(data_list)
+            n_valid = int(np.floor(fraction_valid * n_full))
+
+            # Get validation set indices
+            idx_valid = np.sort(np.random.choice(n_full, n_valid, replace=False))
+
+            # Get training set indices
+            idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
+
+            # Train/validation split
+            data_train = [data_list[i] for i in idx_train]
+            data_valid = [data_list[i] for i in idx_valid]
+        else:
+            data_train = data_list
+            data_valid = [{}]
+
+        if RANK == 0: log.info(f"Number of training snapshots: {len(data_train)}")
+        if RANK == 0: log.info(f"Number of validation snapshots: {len(data_valid)}")
+        
+        x_mean, x_std = self.compute_statistics(data_train,'x')
+        y_mean, y_std = self.compute_statistics(data_train,'y')
         if RANK == 0: log.info(f"Computed training data statistics for each node feature.")
 
+        return {
+                'train': data_train,
+                'validation': data_valid
+               }, {
+                'x': [x_mean, x_std],
+                'y': [y_mean, y_std]
+               }
+
+    def load_trajectory(self, data_dir: str):
+        # read files and remove pressure
+        files_temp = os.listdir(data_dir)
+        files = [item for item in files_temp if 'p_step' not in item]
+        files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
+        
+        # populate dataset for single-step predictions 
+        idx = list(range(len(files)))
+        idx_x = idx[:-1]
+        idx_y = idx[1:]
+        data_traj = []
+        if RANK == 0: log.info("Loading trajectory data...")
+        for i in range(len(idx_x)):
+            step_x_i = idx_x[i]
+            step_y_i = idx_y[i]
+            path_x_i = data_dir + "/" + files[idx_x[i]]
+            path_y_i = data_dir + "/" + files[idx_y[i]]
+            data_x_i = self.prepare_snapshot_data(path_x_i)
+            data_y_i = self.prepare_snapshot_data(path_y_i)
+            data_traj.append(
+                    {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
+                    )
+
+        # split into train/validation 
+        fraction_valid = 0.1
+        if fraction_valid > 0:
+            # How many total snapshots to extract 
+            n_full = len(idx_x)
+            n_valid = int(np.floor(fraction_valid * n_full))
+
+            # Get validation set indices 
+            idx_valid = np.sort(np.random.choice(n_full, n_valid, replace=False))
+
+            # Get training set indices 
+            idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
+
+            # Train/validation split 
+            data_traj_train = [data_traj[i] for i in idx_train]
+            data_traj_valid = [data_traj[i] for i in idx_valid]
+        else:
+            data_traj_train = data_traj
+            data_traj_valid = [{}]
+
+        if RANK == 0: log.info(f"Number of training snapshots: {len(data_traj_train)}")
+        if RANK == 0: log.info(f"Number of validation snapshots: {len(data_traj_valid)}")
+        
+        x_mean, x_std = self.compute_statistics(data_traj_train,'x')
+        y_mean, y_std = self.compute_statistics(data_traj_train,'y')
+        if RANK == 0: log.info(f"Computed training data statistics for each node feature.")
+
+        return {
+                'train': data_traj_train, 
+                'validation': data_traj_valid
+               }, {
+                'x': [x_mean, x_std],
+                'y': [y_mean, y_std]
+               }
+ 
+    def setup_data(self):
+        """
+        Generate the PyTorch Geometric Dataset 
+        """
+        if RANK == 0:
+            log.info('In setup_data...')
+
+        device_for_loading = 'cpu'
+
+        if self.cfg.model_task == "time independent":
+            data_dir = self.cfg.gnn_outputs_path
+            data, stats = self.load_field_data(data_dir)
+        elif self.cfg.model_task == "time dependent":
+            data_dir = self.cfg.traj_data_path + f"/data_rank_{RANK}_size_{SIZE}"
+            data, stats = self.load_trajectory(data_dir)
+          
         # Get data in reduced format (non-overlapping)
         pos_reduced = self.data_reduced.pos
 
         # Read in edge weights 
-        path_to_ew = self.cfg.gnn_outputs_path + 'edge_weights_rank_%d_size_%d.npy' %(RANK,SIZE)
+        path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d.npy' %(RANK,SIZE)
         edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
         self.data_reduced.edge_weight = 1.0/edge_freq
 
         # Read in node degree
-        path_to_node_degree = self.cfg.gnn_outputs_path + 'node_degree_rank_%d_size_%d.npy' %(RANK,SIZE)
+        path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d.npy' %(RANK,SIZE)
         node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
         self.data_reduced.node_degree = node_degree
 
@@ -881,8 +954,8 @@ class Trainer:
         edge_weight_halo = torch.zeros(n_nodes_halo)
 
         # Populate data object 
-        data_x_reduced = data_traj[0]['x']
-        data_y_reduced = data_traj[0]['y']
+        data_x_reduced = data['train'][0]['x']
+        data_y_reduced = data['train'][0]['y']
         n_features_in = data_x_reduced.shape[1]
         n_features_out = data_y_reduced.shape[1]
         n_nodes = self.data_reduced.pos.shape[0]
@@ -916,41 +989,44 @@ class Trainer:
         # No need for distributed sampler -- create standard dataset loader  
         # We can use the standard pytorch dataloader on (x,y) 
         #train_loader = torch_geometric.loader.DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=False)
-        #test_loader = torch_geometric.loader.DataLoader(test_dataset, batch_size=self.cfg.test_batch_size, shuffle=False)  
+        #test_loader = torch_geometric.loader.DataLoader(test_dataset, batch_size=self.cfg.test_batch_size, shuffle=False) 
         if (RANK == 0):
             log.info(f"{data_graph}")
-            log.info(f"shape of x: {data_traj[0]['x'].shape}")
-            log.info(f"shape of y: {data_traj[0]['y'].shape}")
+            log.info(f"shape of x: {data['train'][0]['x'].shape}")
+            log.info(f"shape of y: {data['train'][0]['y'].shape}")
         
         # ~~~~ Populate the data sampler. No need to use torch_geometric sampler -- we assume we have fixed connectivity, and a "GRAPH" batch size of 1. We need a sampler only over the [x,y] pairs (i.e., the elements in data_traj)
         # train_loader = torch_geometric.loader.DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=False)
         assert self.cfg.batch_size == 1, f"batch_size {self.cfg.batch_size} must be set to 1!"
-        assert self.cfg.test_batch_size == 1, f"test_batch_size {self.cfg.batch_size} must be set to 1!"
+        assert self.cfg.val_batch_size == 1, f"val_batch_size {self.cfg.batch_size} must be set to 1!"
 
-        train_loader = torch.utils.data.DataLoader(dataset=data_traj_train, 
+        train_loader = torch.utils.data.DataLoader(dataset=data['train'], 
                                      batch_size=self.cfg.batch_size,
                                      shuffle=True)
 
-        test_loader = torch.utils.data.DataLoader(dataset=data_traj_valid,
-                                            batch_size=self.cfg.test_batch_size,
+        valid_loader = torch.utils.data.DataLoader(dataset=data['validation'],
+                                            batch_size=self.cfg.val_batch_size,
                                             shuffle=False)
         if RANK == 0:
-            data_mean_cpu = data_mean.cpu().numpy()
-            data_std_cpu = data_std.cpu().numpy()
-            np.savez(self.cfg.traj_data_path + f"/data_stats.npz", mean=data_mean_cpu, std=data_std_cpu)
+            np.savez(data_dir + f"/data_stats.npz", 
+                     x_mean=stats['x'][0].cpu().numpy(), x_std=stats['x'][1].cpu().numpy(),
+                     y_mean=stats['y'][0].cpu().numpy(), y_std=stats['y'][1].cpu().numpy(),
+            )
 
         return {
             'train': {
                 'loader': train_loader,
-                'example': data_traj_train[0],
+                'example': data['train'][0],
             },
-            'test': {
-                'loader': test_loader,
-                'example': data_traj_valid[0],
+            'validation': {
+                'loader': valid_loader,
+                'example': data['validation'][0],
             },
             'stats': {
-                'mean': data_mean,
-                'std': data_std,
+                'x_mean': stats['x'][0],
+                'x_std': stats['x'][1],
+                'y_mean': stats['y'][0],
+                'y_std': stats['y'][1],
             },
             'graph': data_graph
         }
@@ -1055,7 +1131,7 @@ class Trainer:
         
         # Prediction
         self.timers['forwardPass'][self.timer_step] = time.time()
-        x_scaled = (data['x'][0] - stats['mean'])/(stats['std'] + SMALL)
+        x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
         out_gnn = self.model(x = x_scaled,
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,
@@ -1077,7 +1153,7 @@ class Trainer:
 
         # Accumulate loss
         self.timers['loss'][self.timer_step] = time.time()
-        target = (data['y'][0] - stats['mean'])/(stats['std'] + SMALL)
+        target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
         n_nodes_local = graph.n_nodes_local
         if SIZE == 1:
             loss = self.loss_fn(pred[:n_nodes_local], target[:n_nodes_local])
@@ -1150,7 +1226,7 @@ class Trainer:
                     buffer_send = None
                     buffer_recv = None
 
-                x_scaled = (data['x'][0] - stats['mean'])/(stats['std'] + SMALL)
+                x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
                 out_gnn = self.model(x = x_scaled,
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,
@@ -1165,7 +1241,7 @@ class Trainer:
                              batch = graph.batch)   
        
                 # Accumulate loss
-                target = (data['y'][0] - stats['mean'])/(stats['std'] + SMALL)
+                target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
                 n_nodes_local = graph.n_nodes_local
                 if SIZE == 1:
                     loss = self.loss_fn(out_gnn[:n_nodes_local], target[:n_nodes_local])
@@ -1243,7 +1319,7 @@ def train(cfg: DictConfig) -> None:
     # Training loop: 
     trainer.model.train()
     train_loader = trainer.data['train']['loader']
-    test_loader = trainer.data['test']['loader']
+    val_loader = trainer.data['validation']['loader']
     num_batches = torch.tensor(len(train_loader))
     batch_times = []
     loss_window = deque(maxlen=10)

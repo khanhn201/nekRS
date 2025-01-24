@@ -2,7 +2,7 @@
 set -a
 
 #... load the necessary modules here ...
-module reload
+module restore
 module load frameworks
 module list
 #...

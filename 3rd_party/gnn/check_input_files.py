@@ -38,6 +38,6 @@ def main():
 
 if __name__ == '__main__':
     main()
-    print("\n\nSUCCESS! ALL FILES PASSED THE CHECK! \n\n")
+    print("SUCCESS! ALL FILES PASSED THE CHECK! \n\n")
 
 

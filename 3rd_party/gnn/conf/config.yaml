@@ -12,10 +12,8 @@ restart: False
 master_addr: none
 master_port: none
 
-# train a time dependent or independent model
-model_task: "time independent" # {time_independent, time series}
-
-# use residual when training. if true: pred = x_in + gnn. if false: pred = gnn 
+# Modeling task
+model_task: "time independent" # {time independent, time dependent}
 use_residual: False
 
 # learning rate schedule 

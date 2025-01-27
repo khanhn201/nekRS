@@ -1,0 +1,40 @@
+#!/bin/bash
+set -a
+
+SYSTEM="aurora"
+NEKRS_HOME="/flare/Aurora_deployment/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
+#VENV_PATH=""
+PROJ_ID="Aurora_deployment"
+QUEUE="lustre_scaling"
+
+if [ ${SYSTEM} == "aurora" ]; then
+  module load frameworks
+fi
+
+if [ -z $VENV_PATH && ! -d ./_pyg ]; then
+  echo -e "\033[35mA Python venv was not specified, building one now ...\033[m"
+  python -m venv --clear _pyg --system-site-packages
+  source _pyg/bin/activate
+  TORCH_PATH=$( python -c 'import torch; print(torch.__path__[0])' )
+  export LD_LIBRARY_PATH=$TORCH_PATH/lib:$LD_LIBRARY_PATH
+  pip install torch_geometric==2.5.3
+  VENV_PATH=${PWD}/_pyg/bin/activate
+elif [ -d ./_pyg ]; then
+  echo -e "\033[35mA Python venv was not specified, but fuond ./_pyg \033[m"
+  VENV_PATH=${PWD}/_pyg/bin/activate
+fi
+
+echo "Setting up case:"
+echo "    system: ${SYSTEM}"
+echo "    venv: ${VENV_PATH}"
+echo
+
+script_name=nrsrun_${SYSTEM}
+NODES=`cat $PBS_NODEFILE | wc -l`
+
+NEKRS_HOME=$NEKRS_HOME \
+PROJ_ID=$PROJ_ID \
+QUEUE=$QUEUE \
+VENV_PATH=$VENV_PATH \
+./${script_name} tgv $NODES 00:30
+

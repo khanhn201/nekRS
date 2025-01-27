@@ -853,8 +853,8 @@ class Trainer:
 
     def load_trajectory(self, data_dir: str):
         # read files and remove pressure
-        files_temp = os.listdir(data_dir)
-        files = [item for item in files_temp if 'p_step' not in item]
+        files = os.listdir(data_dir)
+        #files = [item for item in files_temp if 'p_step' not in item]
         files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
         
         # populate dataset for single-step predictions 
@@ -876,7 +876,7 @@ class Trainer:
 
         # split into train/validation 
         fraction_valid = 0.1
-        if fraction_valid > 0:
+        if fraction_valid > 0 and len(data_traj)*fraction_valid > 1:
             # How many total snapshots to extract 
             n_full = len(idx_x)
             n_valid = int(np.floor(fraction_valid * n_full))
@@ -898,7 +898,6 @@ class Trainer:
         if RANK == 0: log.info(f"Number of validation snapshots: {len(data_traj_valid)}")
         
         x_mean, x_std = self.compute_statistics(data_traj_train,'x')
-        y_mean, y_std = self.compute_statistics(data_traj_train,'y')
         if RANK == 0: log.info(f"Computed training data statistics for each node feature.")
 
         return {
@@ -906,7 +905,7 @@ class Trainer:
                 'validation': data_traj_valid
                }, {
                 'x': [x_mean, x_std],
-                'y': [y_mean, y_std]
+                'y': [x_mean, x_std]
                }
  
     def setup_data(self):
@@ -922,8 +921,8 @@ class Trainer:
             data_dir = self.cfg.gnn_outputs_path
             data, stats = self.load_field_data(data_dir)
         elif self.cfg.model_task == "time dependent":
-            data_dir = self.cfg.traj_data_path + f"/data_rank_{RANK}_size_{SIZE}"
-            data, stats = self.load_trajectory(data_dir)
+            data_dir = self.cfg.traj_data_path
+            data, stats = self.load_trajectory(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
           
         # Get data in reduced format (non-overlapping)
         pos_reduced = self.data_reduced.pos

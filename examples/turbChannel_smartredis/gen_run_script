@@ -13,7 +13,7 @@ if [ ${SYSTEM} == "aurora" ]; then
   module load frameworks
 fi
 
-if [ -z $VENV_PATH ]; then
+if [ -z $VENV_PATH && ! -d ./_ssim ]; then
   echo -e "\033[35mA Python venv was not specified, building one now ...\033[m"
   python -m venv --clear _ssim --system-site-packages
   source _ssim/bin/activate
@@ -28,6 +28,9 @@ if [ -z $VENV_PATH ]; then
   smart build -v --device cpu --torch_dir $TORCH_CMAKE_PATH --no_tf
   smart validate
   cd ..
+  VENV_PATH=${PWD}/_ssim/bin/activate
+elif [ -d ./_pyg ]; then
+  echo -e "\033[35mA Python venv was not specified, but fuond ./_ssim \033[m"
   VENV_PATH=${PWD}/_ssim/bin/activate
 fi
 

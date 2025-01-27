@@ -144,7 +144,7 @@ void UDF_ExecuteStep(double time, int tstep)
   platform->options.getArgs("NUMBER TIMESTEPS", numSteps);
 
   // write trajectory
-  tgen->trajGenWrite(time, tstep);
+  tgen->trajGenWrite(time, tstep, "velocity");
 
   if (nrs->checkpointStep) {
     nrs->Qcriterion(o_qcriterion);

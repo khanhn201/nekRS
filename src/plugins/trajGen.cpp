@@ -66,7 +66,7 @@ void trajGen_t::trajGenSetup()
     }
 }
 
-void trajGen_t::trajGenWrite(dfloat time, int tstep)
+void trajGen_t::trajGenWrite(dfloat time, int tstep, const std::string& field_name)
 {
     if (write)
     {
@@ -85,11 +85,16 @@ void trajGen_t::trajGenWrite(dfloat time, int tstep)
             if (platform->comm.mpiRank == 0) {
                 if (verbose) printf("[TRAJ WRITE] -- In tstep %d, at physical time %g \n", tstep, time);
             }
+
             // write data
-            writeToFileBinaryF(writePath + "/u_step_" + std::to_string(tstep) + ".bin",
-                    U, nrs->fieldOffset, 3);
-            writeToFileBinaryF(writePath + "/p_step_" + std::to_string(tstep) + ".bin",
-                    P, nrs->fieldOffset, 1);
+            if (field_name == "velocity" || field_name == "all") {
+                writeToFileBinaryF(writePath + "/u_step_" + std::to_string(tstep) + ".bin",
+                                   U, nrs->fieldOffset, 3);
+            }
+            if (field_name == "pressure" || field_name == "all") {
+                writeToFileBinaryF(writePath + "/p_step_" + std::to_string(tstep) + ".bin",
+                                   P, nrs->fieldOffset, 1);
+            }
         }
     }
 }

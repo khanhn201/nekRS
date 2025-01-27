@@ -16,7 +16,7 @@ public:
 
     // member functions 
     void trajGenSetup();
-    void trajGenWrite(dfloat time, int tstep);
+    void trajGenWrite(dfloat time, int tstep, const std::string& field_name);
 
     // where trajectory output files are written
     std::string writePath;

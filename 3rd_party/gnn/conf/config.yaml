@@ -24,7 +24,7 @@ master_addr: none
 master_port: none
 
 # Modeling task
-model_task: "time independent" # {time_independent, time series}
+model_task: "time independent" # {time independent, time dependent}
 use_residual: False
 
 # arch properties -- large gnn 

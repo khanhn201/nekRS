@@ -1,6 +1,6 @@
 # Online training and inference of a wall-shear stress model from LES of a turbulent channel flow.
 
-For the details on the channel flow LES, see the [turbChannel example](../turbChannel/README.md)
+For the details on the channel flow LES, see the [turbChannel example](../turbChannel/README.md).
 
 This branch of NekRS-ML includes a plugin that enables communication with a SmartSim database through the use of the SmartRedis API. 
 [SmartSim](https://github.com/CrayLabs/SmartSim) and [SmartRedis](https://github.com/CrayLabs/SmartRedis) are open-source libraries developed by HPE that can be used for coupling traditional HPC applications with AI/ML functionality in situ.
@@ -11,7 +11,7 @@ This can be thought of as a crude example of using ML to train a wall-shear stre
 The instructions below detail how to run the example, train the MLP model from an ongoing nekRS simulation, and then perform inference with the trained model from nekRS to compare the ML predictions with the true values. 
 Note that the SmartRedis plugin is called from UDF_Setup() and UDF_ExecuteStep() in the .udf file.
 
-## Install SmartSim on Aurora
+## Installing SmartSim on Aurora
 
 To install SmartSim on Aurora, follow the instructions below
 ```bash
@@ -53,7 +53,7 @@ cd ..
 
 More information on SmartSim and SmartRedis on Aurora can be found on the [ALCF documentation](https://docs.alcf.anl.gov/aurora/workflows/smartsim/).
 
-## Build nekRS with the SmartRedis plugin
+## Building nekRS with the SmartRedis plugin
 
 To build nekRS with the SmartRedis plugin, execute the build script [BuildMeOnAurora](../../BuildMeOnAurora) from the top directory
 ```bash
@@ -63,6 +63,7 @@ source BuildMeOnAurora
 ## Runnig the example
 
 Scripts are provided to conveniently generate run scripts and config files for the workflow on the different ALCF systems.
+If you don't specify a virtual environment path, the script will create one for you.
 From an interactive session on the compute nodes, first execute
 ```bash
 ./gen_run_script
@@ -81,7 +82,7 @@ PROJ_ID # project name for the allocation
 QUEUE # name of the queue to run on
 ```
 
-The script generate the config file for the workflow (`ssim_config.yaml`) and the run script to execute with
+The script generates the config file for the workflow (`ssim_config.yaml`) and the run script to execute with
 ```bash
 ./run.sh
 ```

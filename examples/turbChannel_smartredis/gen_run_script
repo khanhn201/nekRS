@@ -5,9 +5,9 @@ SYSTEM="aurora"
 DEPLOYMENT="colocated"
 ML_TASK="train"
 NEKRS_HOME="/flare/Aurora_deployment/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
-VENV_PATH="/flare/Aurora_deployment/balin/Nek/nekRSv24/venv/_ssim_env/bin/activate"
+VENV_PATH=""
 PROJ_ID="Aurora_deployment"
-QUEUE="lustre_scaling"
+QUEUE="debug"
 
 if [ ${SYSTEM} == "aurora" ]; then
   module load frameworks
@@ -40,7 +40,7 @@ echo "    deployment: ${DEPLOYMENT}"
 echo "    ML task: ${ML_TASK}"
 echo
 
-script_name=ssimrun_${SYSTEM}
+script_name=nrsrun_${SYSTEM}
 if [ ${DEPLOYMENT} == "colocated" ]; then
   NODES=`cat $PBS_NODEFILE | wc -l`
   NEKRS_HOME=$NEKRS_HOME \

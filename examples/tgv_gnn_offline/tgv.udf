@@ -154,7 +154,6 @@ void UDF_ExecuteStep(double time, int tstep)
     std::string nranks = "_size_" + std::to_string(size);
     std::cout << "n_nodes: " << n_nodes << "\t fieldOffset: " << nrs->fieldOffset << std::endl;
 
-    // fix fieldOffset!
     writeToFileBinaryF(graph->writePath + "/fld_u_time_" + time_rounded_string + irank + nranks + ".bin",
                 U, nrs->fieldOffset, 3);
     writeToFileBinaryF(graph->writePath + "/fld_p_time_" + time_rounded_string + irank + nranks + ".bin",

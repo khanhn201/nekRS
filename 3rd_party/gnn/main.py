@@ -305,8 +305,6 @@ class Trainer:
         self.model = self.build_model()
         if RANK==0: 
             log.info('Built model with %i trainable parameters' %(self.count_weights(self.model)))
-        if WITH_CUDA or WITH_XPU:
-            self.model.to(self.device)
         self.model.to(TORCH_FLOAT_DTYPE)
         if RANK == 0: log.info('Done with build_model')
 
@@ -374,8 +372,12 @@ class Trainer:
 
         # ~~~~ Wrap model in DDP
         if WITH_DDP and SIZE > 1:
-            self.model = DDP(self.model)
-            #self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
+            if WITH_CUDA:
+                self.model.to(self.device)
+                self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
+            if WITH_XPU:
+                self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
+                self.model.to(self.device)
 
         # ~~~~ Setup train_step timers 
         self.timer_step = 0
@@ -817,6 +819,7 @@ class Trainer:
             data_list.append({'x': data_x, 'y':data_y})
 
         # split into train/validation
+        data = {'train': [], 'validation': []}
         fraction_valid = 0.1
         if fraction_valid > 0 and len(data_list)*fraction_valid > 1:
             # How many total snapshots to extract
@@ -830,30 +833,44 @@ class Trainer:
             idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
 
             # Train/validation split
-            data_train = [data_list[i] for i in idx_train]
-            data_valid = [data_list[i] for i in idx_valid]
+            data['train'] = [data_list[i] for i in idx_train]
+            data['validation'] = [data_list[i] for i in idx_valid]
         else:
-            data_train = data_list
-            data_valid = [{}]
+            data['train'] = data_list
+            data['validation'] = [{}]
 
-        if RANK == 0: log.info(f"Number of training snapshots: {len(data_train)}")
-        if RANK == 0: log.info(f"Number of validation snapshots: {len(data_valid)}")
+        if RANK == 0: log.info(f"Number of training snapshots: {len(data['train'])}")
+        if RANK == 0: log.info(f"Number of validation snapshots: {len(data['validation'])}")
         
-        x_mean, x_std = self.compute_statistics(data_train,'x')
-        y_mean, y_std = self.compute_statistics(data_train,'y')
-        if RANK == 0: log.info(f"Computed training data statistics for each node feature.")
-
-        return {
-                'train': data_train,
-                'validation': data_valid
-               }, {
-                'x': [x_mean, x_std],
-                'y': [y_mean, y_std]
-               }
+        # Compute statistics for normalization
+        stats = {'x': [], 'y': []} 
+        if os.path.exists(data_dir + f"/data_stats.npz"):
+            if RANK == 0:
+                stats = np.load(data_dir + f"/data_stats.npz")
+                stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
+                stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
+            stats = COMM.bcast(stats, root=0)
+            stats['x'] = [torch.tensor(stats['x'][0]).to(self.device), 
+                          torch.tensor(stats['x'][1]).to(self.device)] 
+            stats['y'] = [torch.tensor(stats['y'][0]).to(self.device), 
+                          torch.tensor(stats['y'][1]).to(self.device)] 
+            if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
+        else: 
+            x_mean, x_std = self.compute_statistics(data['train'],'x')
+            y_mean, y_std = self.compute_statistics(data['train'],'y')
+            if RANK == 0:
+                np.savez(data_dir + f"/data_stats.npz", 
+                     x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
+                     y_mean=y_mean.cpu().numpy(), y_std=y_std.cpu().numpy(),
+                )
+            stats['x'] = [x_mean, x_std]
+            stats['y'] = [y_mean, y_std]
+            if RANK == 0: log.info(f"Computed training data statistics for each node feature")
+        return data, stats
 
     def load_trajectory(self, data_dir: str):
         # read files and remove pressure
-        files = os.listdir(data_dir)
+        files = os.listdir(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
         #files = [item for item in files_temp if 'p_step' not in item]
         files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
         
@@ -866,15 +883,16 @@ class Trainer:
         for i in range(len(idx_x)):
             step_x_i = idx_x[i]
             step_y_i = idx_y[i]
-            path_x_i = data_dir + "/" + files[idx_x[i]]
-            path_y_i = data_dir + "/" + files[idx_y[i]]
+            path_x_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_x[i]]
+            path_y_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_y[i]]
             data_x_i = self.prepare_snapshot_data(path_x_i)
             data_y_i = self.prepare_snapshot_data(path_y_i)
             data_traj.append(
                     {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
                     )
 
-        # split into train/validation 
+        # split into train/validation
+        data = {'train': [], 'validation': []}
         fraction_valid = 0.1
         if fraction_valid > 0 and len(data_traj)*fraction_valid > 1:
             # How many total snapshots to extract 
@@ -888,25 +906,40 @@ class Trainer:
             idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
 
             # Train/validation split 
-            data_traj_train = [data_traj[i] for i in idx_train]
-            data_traj_valid = [data_traj[i] for i in idx_valid]
+            data['train'] = [data_traj[i] for i in idx_train]
+            data['validation'] = [data_traj[i] for i in idx_valid]
         else:
-            data_traj_train = data_traj
-            data_traj_valid = [{}]
+            data['train'] = data_traj
+            data['validation'] = [{}]
 
-        if RANK == 0: log.info(f"Number of training snapshots: {len(data_traj_train)}")
-        if RANK == 0: log.info(f"Number of validation snapshots: {len(data_traj_valid)}")
-        
-        x_mean, x_std = self.compute_statistics(data_traj_train,'x')
-        if RANK == 0: log.info(f"Computed training data statistics for each node feature.")
+        if RANK == 0: log.info(f"Number of training snapshots: {len(data['train'])}")
+        if RANK == 0: log.info(f"Number of validation snapshots: {len(data['validation'])}")
 
-        return {
-                'train': data_traj_train, 
-                'validation': data_traj_valid
-               }, {
-                'x': [x_mean, x_std],
-                'y': [x_mean, x_std]
-               }
+        # Compute statistics for normalization
+        stats = {'x': [], 'y': []} 
+        if os.path.exists(data_dir + "/data_stats.npz"):
+            if RANK == 0:
+                npzfile = np.load(data_dir + "/data_stats.npz")
+                stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
+                stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
+            stats = COMM.bcast(stats, root=0)
+            stats['x'] = [torch.tensor(stats['x'][0]).to(self.device), 
+                          torch.tensor(stats['x'][1]).to(self.device)] 
+            stats['y'] = [torch.tensor(stats['y'][0]).to(self.device), 
+                          torch.tensor(stats['y'][1]).to(self.device)] 
+            if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
+        else: 
+            if RANK == 0: log.info(f"Computing training data statistics")
+            x_mean, x_std = self.compute_statistics(data['train'],'x')
+            if RANK == 0:
+                np.savez(data_dir + "/data_stats.npz", 
+                     x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
+                     y_mean=x_mean.cpu().numpy(), y_std=x_std.cpu().numpy(),
+                )
+            stats['x'] = [x_mean, x_std]
+            stats['y'] = [x_mean, x_std]
+            if RANK == 0: log.info(f"Computed training data statistics for each node feature")
+        return data, stats
  
     def setup_data(self):
         """
@@ -922,7 +955,7 @@ class Trainer:
             data, stats = self.load_field_data(data_dir)
         elif self.cfg.model_task == "time dependent":
             data_dir = self.cfg.traj_data_path
-            data, stats = self.load_trajectory(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
+            data, stats = self.load_trajectory(data_dir)
           
         # Get data in reduced format (non-overlapping)
         pos_reduced = self.data_reduced.pos
@@ -1006,11 +1039,6 @@ class Trainer:
         valid_loader = torch.utils.data.DataLoader(dataset=data['validation'],
                                             batch_size=self.cfg.val_batch_size,
                                             shuffle=False)
-        if RANK == 0:
-            np.savez(data_dir + f"/data_stats.npz", 
-                     x_mean=stats['x'][0].cpu().numpy(), x_std=stats['x'][1].cpu().numpy(),
-                     y_mean=stats['y'][0].cpu().numpy(), y_std=stats['y'][1].cpu().numpy(),
-            )
 
         return {
             'train': {

@@ -457,7 +457,8 @@ class Trainer:
         # Get the polynomial order -- for naming the model
         try:
             main_path = self.cfg.gnn_outputs_path
-            Np = np.loadtxt(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
+            #Np = np.loadtxt(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
+            Np = self.load_data(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
             poly = np.cbrt(Np) - 1.
             poly = int(poly)
         except FileNotFoundError:
@@ -661,22 +662,44 @@ class Trainer:
         dist.gather(input_tensor, gather_list, dst=0)
         return gather_list
 
+    def load_data(self, file_name: str, 
+                  dtype: Optional[type] = np.float64, 
+                  extension: Optional[str] = ""
+    ):
+        if not self.cfg.online:
+            # check extension anyway
+            ext = file_name.split('.')[-1]
+            if extension == ".bin" or ext == "bin":
+                data = np.fromfile(file_name+extension, dtype=dtype)
+            elif extension == ".npy" or ext == "npy":
+                data = np.load(file_name+extension)
+            elif extension == ".npz" or ext == "npz":
+                data = np.load(file_name+extension)
+            else:
+                data = np.loadtxt(file_name, dtype=dtype)
+        else:
+            data = self.client.get_array(file_name)
+        return data
+
     def setup_local_graph(self):
         """
         Load in the local graph
         """
         if not self.cfg.online:
-            main_path = self.cfg.gnn_outputs_path 
-            path_to_pos_full = main_path + '/pos_node_rank_%d_size_%d' %(RANK,SIZE)
-            path_to_ei = main_path + '/edge_index_rank_%d_size_%d' %(RANK,SIZE)
-            path_to_overlap = main_path + '/overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
-            path_to_glob_ids = main_path + '/global_ids_rank_%d_size_%d' %(RANK,SIZE)
-            path_to_unique_local = main_path + '/local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
-            path_to_unique_halo = main_path + '/halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+            main_path = self.cfg.gnn_outputs_path + '/'
+        else:
+            main_path = ""
+        path_to_pos_full = main_path + 'pos_node_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_ei = main_path + 'edge_index_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_overlap = main_path + 'overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_glob_ids = main_path + 'global_ids_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_unique_local = main_path + 'local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+        path_to_unique_halo = main_path + 'halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
         
         # ~~~~ Get positions and global node index
         if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
-        pos = np.fromfile(path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
+        #pos = np.fromfile(path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
+        pos = self.load_data(path_to_pos_full, extension='.bin').reshape((-1,3))
         pos = pos.astype(NP_FLOAT_DTYPE)
 
         pos_orig = np.copy(pos)
@@ -685,21 +708,25 @@ class Trainer:
         L_z = 2. 
         # pos[:,2] = np.cos(2.*np.pi*pos[:,2]/L_z) # cosine
         pos[:,2] = np.abs((pos[:,2] % L_z) - L_z / 2) # piecewise linear 
-        gli = np.fromfile(path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
+        #gli = np.fromfile(path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
+        gli = self.load_data(path_to_glob_ids,dtype=np.int64,extension='.bin').reshape((-1,1))
 
         # ~~~~ Get edge index
         if self.cfg.verbose: log.info('[RANK %d]: Loading edge index' %(RANK))
-        ei = np.fromfile(path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
+        #ei = np.fromfile(path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
+        ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin').reshape((-1,2)).T
         ei = ei.astype(np.int64) # sb: int64 for edge_index 
         
         # ~~~~ Get local unique mask
         if self.cfg.verbose: log.info('[RANK %d]: Loading local unique mask' %(RANK))
-        local_unique_mask = np.fromfile(path_to_unique_local + ".bin", dtype=np.int32)
+        #local_unique_mask = np.fromfile(path_to_unique_local + ".bin", dtype=np.int32)
+        local_unique_mask = self.load_data(path_to_unique_local,dtype=np.int32,extension='.bin')
 
         # ~~~~ Get halo unique mask
         halo_unique_mask = np.array([])
         if SIZE > 1:
-            halo_unique_mask = np.fromfile(path_to_unique_halo + ".bin", dtype=np.int32)
+            #halo_unique_mask = np.fromfile(path_to_unique_halo + ".bin", dtype=np.int32)
+            halo_unique_mask = self.load_data(path_to_unique_halo,dtype=np.int32,extension='.bin')
 
         # ~~~~ Make the full graph: 
         if self.cfg.verbose: log.info('[RANK %d]: Making the FULL GLL-based graph with overlapping nodes' %(RANK))
@@ -726,7 +753,8 @@ class Trainer:
 
         halo_info = None
         if SIZE > 1:
-            halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
+            #halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
+            halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
             # Get list of neighboring processors for each processor
             self.neighboring_procs = np.unique(halo_info[:,3])
             n_nodes_local = self.data_reduced.pos.shape[0]
@@ -748,7 +776,8 @@ class Trainer:
 
 
     def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
-        data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,n_colms)) 
+        #data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,n_colms)) 
+        data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
          
         # Retain only N_gll = Np*Ne elements
@@ -853,7 +882,8 @@ class Trainer:
         stats = {'x': [], 'y': []} 
         if os.path.exists(data_dir + f"/data_stats.npz"):
             if RANK == 0:
-                stats = np.load(data_dir + f"/data_stats.npz")
+                #stats = np.load(data_dir + f"/data_stats.npz")
+                stats = self.load_data(data_dir + f"/data_stats",extension=".npz")
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)
@@ -926,7 +956,8 @@ class Trainer:
         stats = {'x': [], 'y': []} 
         if os.path.exists(data_dir + "/data_stats.npz"):
             if RANK == 0:
-                npzfile = np.load(data_dir + "/data_stats.npz")
+                #npzfile = np.load(data_dir + "/data_stats.npz")
+                stats = self.load_data(data_dir + f"/data_stats",extension=".npz")
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)
@@ -968,13 +999,15 @@ class Trainer:
         pos_reduced = self.data_reduced.pos
 
         # Read in edge weights 
-        path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d.npy' %(RANK,SIZE)
-        edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
+        path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
+        #edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
+        edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
         self.data_reduced.edge_weight = 1.0/edge_freq
 
         # Read in node degree
-        path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d.npy' %(RANK,SIZE)
-        node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
+        path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
+        #node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
+        node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
         self.data_reduced.node_degree = node_degree
 
         # Add halo nodes by appending the end of the node arrays  

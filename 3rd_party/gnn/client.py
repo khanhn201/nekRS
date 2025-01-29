@@ -21,4 +21,7 @@ class OnlineClient:
             else:
                 self.client = Client(address=SSDB,cluster=True)
 
-
+    def get_array(self, file_name: str):
+        if self.backend == "smartredis":
+            array = self.client.get_tensor(file_name)
+        return array

@@ -11,7 +11,7 @@ if [ ${SYSTEM} == "aurora" ]; then
   module load frameworks
 fi
 
-if [ -z $VENV_PATH && ! -d ./_pyg ]; then
+if [[ -z "$VENV_PATH" && ! -d ./_pyg ]]; then
   echo -e "\033[35mA Python venv was not specified, building one now ...\033[m"
   python -m venv --clear _pyg --system-site-packages
   source _pyg/bin/activate

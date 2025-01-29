@@ -13,7 +13,7 @@ if [ ${SYSTEM} == "aurora" ]; then
   module load frameworks
 fi
 
-if [ -z $VENV_PATH && ! -d ./_ssim ]; then
+if [[ -z "$VENV_PATH" && ! -d ./_ssim ]]; then
   echo -e "\033[35mA Python venv was not specified, building one now ...\033[m"
   python -m venv --clear _ssim --system-site-packages
   source _ssim/bin/activate
@@ -29,7 +29,7 @@ if [ -z $VENV_PATH && ! -d ./_ssim ]; then
   smart validate
   cd ..
   VENV_PATH=${PWD}/_ssim/bin/activate
-elif [ -d ./_pyg ]; then
+elif [ -d ./_ssim ]; then
   echo -e "\033[35mA Python venv was not specified, but fuond ./_ssim \033[m"
   VENV_PATH=${PWD}/_ssim/bin/activate
 fi

@@ -10,6 +10,8 @@ static dfloat betaY;
 
 #endif
 
+smartredis_client_t* client = nullptr;
+
 /* User Functions */
 
 void userf(double time)
@@ -87,9 +89,9 @@ void UDF_Setup()
   useric(nrs);
 
   // Initialize SmartRedis client
-  smartredis::init_client(nrs);
-  smartredis::init_check_run();
-  smartredis::init_wallModel_train(nrs); // model for the wall shear stress
+  client = new smartredis_client_t(nrs);
+  client->init_check_run();
+  client->init_wallModel_train(); // model for the wall shear stress
 }
 
 void UDF_ExecuteStep(double time, int tstep)
@@ -97,13 +99,13 @@ void UDF_ExecuteStep(double time, int tstep)
   // Send training data for model every set number of steps
   if (tstep%50==0 && tstep>0) {
     //postProcessing::strainRate(nrs, false, nrs->cds->o_S);
-    smartredis::put_wallModel_data(nrs, tstep); // model for the wall shear stress
+    client->put_wallModel_data(tstep); // model for the wall shear stress
     MPI_Barrier(platform->comm.mpiComm);
-    smartredis::put_step_num(tstep);
+    client->put_step_num(tstep);
   }
 
   // Every time step check if ML training says it is time to quit
-  int exit_val = smartredis::check_run();
+  int exit_val = client->check_run();
   if (exit_val==0) {
     nekrs::setEndTime(-10.0);
     nekrs::forceLastStep();

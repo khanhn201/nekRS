@@ -10,6 +10,8 @@ static dfloat betaY;
 
 #endif
 
+smartredis_client_t* client = nullptr;
+
 /* User Functions */
 
 void userf(double time)
@@ -87,8 +89,8 @@ void UDF_Setup()
   useric(nrs);
 
   // Initialize SmartRedis client
-  smartredis::init_client(nrs);
-  smartredis::init_wallModel_train(nrs); // model for the wall shear stress
+  client = new smartredis_client_t(nrs);
+  client->init_wallModel_train(); // model for the wall shear stress
 }
 
 void UDF_ExecuteStep(double time, int tstep)
@@ -96,6 +98,6 @@ void UDF_ExecuteStep(double time, int tstep)
   // Perform inference with wall model
   if (tstep%50==0 && tstep>0) {
     //postProcessing::strainRate(nrs, false, nrs->cds->o_S);
-    smartredis::run_wallModel(nrs, tstep); // model for the wall shear stress
+    client->run_wallModel(tstep); // model for the wall shear stress
   }
 }

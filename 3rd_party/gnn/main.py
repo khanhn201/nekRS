@@ -61,6 +61,9 @@ import gnn
 # Graph connectivity
 import graph_connectivity as gcon
 
+# Online client
+from client import OnlineClient
+
 log = logging.getLogger(__name__)
 
 Tensor = torch.Tensor
@@ -143,7 +146,6 @@ def init_process_group(
         world_size=int(world_size),
         init_method='env://',
     )
-
 
 def cleanup():
     dist.destroy_process_group()
@@ -255,15 +257,19 @@ class ScheduledOptim():
             param_group['lr'] = lr
 
 class Trainer:
-    def __init__(self, cfg: DictConfig, scaler: Optional[GradScaler] = None):
+    def __init__(self, 
+                 cfg: DictConfig, 
+                 scaler: Optional[GradScaler] = None,
+                 client: Optional[OnlineClient] = None
+    ):
         self.cfg = cfg
         self.rank = RANK
         if scaler is None:
             self.scaler = None
-        #self.device = 'gpu' if torch.cuda.is_available() else 'cpu'
-        #self.device = 'gpu' if WITH_CUDA or WITH_XPU else 'cpu'
         self.device = DEVICE
         self.backend = self.cfg.backend
+        self.client = client
+
         if WITH_DDP:
             os.environ['RANK'] = str(RANK)
             os.environ['WORLD_SIZE'] = str(SIZE)
@@ -283,7 +289,10 @@ class Trainer:
         self.setup_torch()
 
         # ~~~~ Setup local graph 
-        self.data_reduced, self.data_full, self.idx_full2reduced, self.idx_reduced2full = self.setup_local_graph()
+        self.data_reduced, \
+            self.data_full, \
+            self.idx_full2reduced, \
+            self.idx_reduced2full = self.setup_local_graph()
 
         # ~~~~ Setup halo nodes 
         self.neighboring_procs = []
@@ -305,6 +314,7 @@ class Trainer:
         self.model = self.build_model()
         if RANK==0: 
             log.info('Built model with %i trainable parameters' %(self.count_weights(self.model)))
+        self.model.to(self.device)
         self.model.to(TORCH_FLOAT_DTYPE)
         if RANK == 0: log.info('Done with build_model')
 
@@ -372,12 +382,9 @@ class Trainer:
 
         # ~~~~ Wrap model in DDP
         if WITH_DDP and SIZE > 1:
-            if WITH_CUDA:
-                self.model.to(self.device)
-                self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
-            if WITH_XPU:
-                self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
-                self.model.to(self.device)
+            if WITH_XPU: self.model.to('cpu')
+            self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
+            if WITH_XPU: self.model.to(self.device)
 
         # ~~~~ Setup train_step timers 
         self.timer_step = 0
@@ -658,14 +665,14 @@ class Trainer:
         """
         Load in the local graph
         """
-        main_path = self.cfg.gnn_outputs_path 
-
-        path_to_pos_full = main_path + '/pos_node_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_ei = main_path + '/edge_index_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_overlap = main_path + '/overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_glob_ids = main_path + '/global_ids_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_unique_local = main_path + '/local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_unique_halo = main_path + '/halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+        if not self.cfg.online:
+            main_path = self.cfg.gnn_outputs_path 
+            path_to_pos_full = main_path + '/pos_node_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_ei = main_path + '/edge_index_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_overlap = main_path + '/overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_glob_ids = main_path + '/global_ids_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_unique_local = main_path + '/local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_unique_halo = main_path + '/halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
         
         # ~~~~ Get positions and global node index
         if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
@@ -1413,7 +1420,11 @@ def main(cfg: DictConfig) -> None:
         print(OmegaConf.to_yaml(cfg)) 
         print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
 
-    train(cfg)
+    if not cfg.online:
+        train(cfg)
+    else:
+        client = OnlineClient()
+        train(cfg, client)
     cleanup()
 
 if __name__ == '__main__':

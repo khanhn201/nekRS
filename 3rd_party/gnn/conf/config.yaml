@@ -37,6 +37,17 @@ halo_swap_mode : none
 # plotting the connecivity (can take some time)
 plot_connectivity : False
 
+# specify path to gnn_outputs here (case directory)  
+gnn_outputs_path: ${work_dir}/gnn_outputs_poly_7/
+traj_data_path: ${work_dir}/traj_poly_1/
+
+# Online training
+online: False
+client: 
+    backend: "smartredis"
+    db_nodes: 1
+
+
 hydra:
   job:
     chdir: true
@@ -61,7 +72,3 @@ profile_dir: ${work_dir}/outputs/profiles/new_timers/
 # path to save inference results 
 inference_dir: ${work_dir}/outputs/inference/
 
-
-# specify path to gnn_outputs here (case directory)  
-gnn_outputs_path: ${work_dir}/gnn_outputs_poly_7/
-traj_data_path: ${work_dir}/traj_poly_1/

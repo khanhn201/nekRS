@@ -848,7 +848,7 @@ class Trainer:
         stats = {'x': [], 'y': []} 
         if os.path.exists(data_dir + f"/data_stats.npz"):
             if RANK == 0:
-                stats = np.load(data_dir + f"/data_stats.npz")
+                npzfile = np.load(data_dir + f"/data_stats.npz")
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)

@@ -382,13 +382,14 @@ class Trainer:
             self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
             if WITH_XPU: self.model.to(self.device)
 
-        # ~~~~ Setup train_step timers 
-        self.timer_step = 0
-        self.timer_step_max = self.total_iterations - self.iteration
-        self.timers = self.setup_timers(self.timer_step_max)
-        self.timers_max = self.setup_timers(self.timer_step_max)
-        self.timers_min = self.setup_timers(self.timer_step_max)
-        self.timers_avg = self.setup_timers(self.timer_step_max)
+        # ~~~~ Setup train_step timers
+        if self.cfg.timers:
+            self.timer_step = 0
+            self.timer_step_max = self.total_iterations - self.iteration
+            self.timers = self.setup_timers(self.timer_step_max)
+            self.timers_max = self.setup_timers(self.timer_step_max)
+            self.timers_min = self.setup_timers(self.timer_step_max)
+            self.timers_avg = self.setup_timers(self.timer_step_max)
 
     def checkpoint(self):
         if RANK == 0:
@@ -739,8 +740,7 @@ class Trainer:
         self.data_reduced.n_nodes_halo = torch.tensor(n_nodes_halo, dtype=torch.int64)
         self.data_reduced.halo_info = halo_info
 
-        return 
-
+        return
 
     def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
         data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,n_colms)) 
@@ -1071,7 +1071,11 @@ class Trainer:
         timers['collectives'] = np.zeros(n_record)
         return timers
 
-    def update_timers(self):
+    def update_timer(self, key: str, tstep: int, time: float):
+        self.timers[key][tstep] = time
+        self.synchronize()
+
+    def update_timer_stats(self):
         keys = self.timers.keys()
         i = self.timer_step
         for key in keys:
@@ -1124,11 +1128,17 @@ class Trainer:
                            f"std = {val['std']:>6e} "
             log.info(f"{key} [s] " + stats_string)
 
+    def synchronize(self):
+        if WITH_CUDA:
+            torch.cuda.synchronize()
+        if WITH_XPU:
+            torch.xpu.synchronize()
+
     def train_step(self, data: DataBatch) -> Tensor:
         loss = torch.tensor([0.0])
         graph = self.data['graph']
         stats = self.data['stats']
-        self.timers['dataTransfer'][self.timer_step] = time.time()
+        tic = time.time()
         if WITH_CUDA or WITH_XPU:
             data['x'] = data['x'].to(self.device)
             data['y'] = data['y'].to(self.device)
@@ -1139,12 +1149,12 @@ class Trainer:
             graph.halo_info = graph.halo_info.to(self.device)
             graph.node_degree = graph.node_degree.to(self.device)
             loss = loss.to(self.device)
-        self.timers['dataTransfer'][self.timer_step] = time.time() - self.timers['dataTransfer'][self.timer_step]
+        if self.cfg.timers: self.update_timer('dataTransfer', self.timer_step, time.time() - tic)
                 
         self.s_optimizer.zero_grad()
 
         # re-allocate send buffer 
-        self.timers['bufferInit'][self.timer_step] = time.time()
+        tic = time.time()
         if self.cfg.halo_swap_mode != 'none':
             for i in range(SIZE):
                 if self.cfg.halo_swap_mode == "all_to_all_opt_intel":
@@ -1156,10 +1166,10 @@ class Trainer:
         else:
             buffer_send = None
             buffer_recv = None
-        self.timers['bufferInit'][self.timer_step] = time.time() - self.timers['bufferInit'][self.timer_step]
+        if self.cfg.timers: self.update_timer('bufferInit', self.timer_step, time.time() - tic)
         
         # Prediction
-        self.timers['forwardPass'][self.timer_step] = time.time()
+        tic = time.time()
         x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
         out_gnn = self.model(x = x_scaled,
                              edge_index = graph.edge_index,
@@ -1173,7 +1183,7 @@ class Trainer:
                              neighboring_procs = self.neighboring_procs,
                              SIZE = SIZE,
                              batch = graph.batch)
-        self.timers['forwardPass'][self.timer_step] = time.time() - self.timers['forwardPass'][self.timer_step]
+        if self.cfg.timers: self.update_timer('forwardPass', self.timer_step, time.time() - tic)
 
         if self.cfg.use_residual:
             pred = out_gnn + x_scaled
@@ -1181,7 +1191,7 @@ class Trainer:
             pred = out_gnn
 
         # Accumulate loss
-        self.timers['loss'][self.timer_step] = time.time()
+        tic = time.time()
         target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
         n_nodes_local = graph.n_nodes_local
         if SIZE == 1:
@@ -1198,20 +1208,21 @@ class Trainer:
             effective_nodes = distnn.all_reduce(effective_nodes_local)
             sum_squared_errors = distnn.all_reduce(sum_squared_errors_local)
             loss = (1.0/(effective_nodes*n_output_features)) * sum_squared_errors
-        self.timers['loss'][self.timer_step] = time.time() - self.timers['loss'][self.timer_step]
+        if self.cfg.timers: self.update_timer('loss', self.timer_step, time.time() - tic)
 
-        self.timers['backwardPass'][self.timer_step] = time.time()
+        tic = time.time()
         loss.backward()
-        self.timers['backwardPass'][self.timer_step] = time.time() - self.timers['backwardPass'][self.timer_step]
+        if self.cfg.timers: self.update_timer('backwardPass', self.timer_step, time.time() - tic)
 
-        self.timers['optimizerStep'][self.timer_step] = time.time()
+        tic = time.time()
         self.s_optimizer.step_and_update_lr()
-        self.timers['optimizerStep'][self.timer_step] = time.time() - self.timers['optimizerStep'][self.timer_step]
+        if self.cfg.timers: self.update_timer('optimizerStep', self.timer_step, time.time() - tic)
 
-        # Update timers 
-        if self.timer_step < self.timer_step_max - 1:
-            self.update_timers()
-            self.timer_step += 1
+        # Update timers
+        if self.cfg.timers:
+            if self.timer_step < self.timer_step_max - 1:
+                self.update_timer_stats()
+                self.timer_step += 1
         return loss 
 
     def test(self) -> dict:
@@ -1242,7 +1253,6 @@ class Trainer:
 
 
                 # re-allocate send buffer
-                self.timers['bufferInit'][self.timer_step] = time.time()
                 if self.cfg.halo_swap_mode != 'none':
                     for i in range(SIZE):
                         if self.cfg.halo_swap_mode == "all_to_all_opt_intel":
@@ -1363,7 +1373,7 @@ def train(cfg: DictConfig) -> None:
             trainer.iteration += 1 
             
             # Calculate gradients  
-            postproc_out = trainer.postprocess()
+            if cfg.postprocess: postproc_out = trainer.postprocess()
 
             # Logging 
             if RANK == 0:
@@ -1377,19 +1387,21 @@ def train(cfg: DictConfig) -> None:
                 sepstr = '-' * len(summary_train)
                 log.info(sepstr)
                 log.info(summary_train)
-                t_dataTransfer = trainer.timers['dataTransfer'][trainer.timer_step-1]
-                t_bufferInit = trainer.timers['bufferInit'][trainer.timer_step-1]
-                t_forwardPass = trainer.timers['forwardPass'][trainer.timer_step-1]
-                t_loss = trainer.timers['loss'][trainer.timer_step-1]
-                t_backwardPass = trainer.timers['backwardPass'][trainer.timer_step-1]
-                t_optimizerStep = trainer.timers['optimizerStep'][trainer.timer_step-1]
-                log.info(f"t_dataTransfer: {t_dataTransfer:.4g} sec") 
-                log.info(f"t_bufferInit: {t_bufferInit:.4g} sec")
-                log.info(f"t_forwardPass: {t_forwardPass:.4g} sec [{n_nodes_local/t_forwardPass:.4e} nodes/sec]")
-                log.info(f"t_loss: {t_loss:.4g} sec [{n_nodes_local/t_loss:.4e} nodes/sec]")
-                log.info(f"t_backwardPass: {t_backwardPass:.4g} sec [{n_nodes_local/t_backwardPass:.4e} nodes/sec]")
-                log.info(f"t_optimizerStep: {t_optimizerStep:.4g} sec")
-                log.info(f"grad norm: {postproc_out[0]:.6g}")
+                if cfg.timers:
+                    t_dataTransfer = trainer.timers['dataTransfer'][trainer.timer_step-1]
+                    t_bufferInit = trainer.timers['bufferInit'][trainer.timer_step-1]
+                    t_forwardPass = trainer.timers['forwardPass'][trainer.timer_step-1]
+                    t_loss = trainer.timers['loss'][trainer.timer_step-1]
+                    t_backwardPass = trainer.timers['backwardPass'][trainer.timer_step-1]
+                    t_optimizerStep = trainer.timers['optimizerStep'][trainer.timer_step-1]
+                    log.info(f"t_dataTransfer: {t_dataTransfer:.4g} sec") 
+                    log.info(f"t_bufferInit: {t_bufferInit:.4g} sec")
+                    log.info(f"t_forwardPass: {t_forwardPass:.4g} sec [{n_nodes_local/t_forwardPass:.4e} nodes/sec]")
+                    log.info(f"t_loss: {t_loss:.4g} sec [{n_nodes_local/t_loss:.4e} nodes/sec]")
+                    log.info(f"t_backwardPass: {t_backwardPass:.4g} sec [{n_nodes_local/t_backwardPass:.4e} nodes/sec]")
+                    log.info(f"t_optimizerStep: {t_optimizerStep:.4g} sec")
+                if cfg.postprocess:
+                    log.info(f"grad norm: {postproc_out[0]:.6g}")
 
             # Checkpoint  
             if trainer.iteration % cfg.ckptfreq == 0:

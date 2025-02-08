@@ -177,6 +177,12 @@ def all_gather_tensor(tensor_list: list[Tensor], tensor_local: Tensor):
         return tensor_list
     return [tensor_local]
 
+def mpi_all_gather(local_obj):
+    if (WITH_DDP):
+        obj_list = COMM.allgather(local_obj)
+        return obj_list
+    return [local_obj]
+
 def trace_handler(p):
     output = p.key_averages().table(sort_by="self_cuda_time", row_limit=20)
     print(output)
@@ -762,24 +768,25 @@ class Trainer:
         return x
 
     def compute_statistics(self, data_list: list, var: str):
+        device = 'cpu'
         n_features = data_list[0][var].shape[1]
         n_nodes_local = self.data_reduced.n_nodes_local
         n_snaps = len(data_list)
         x_full = torch.zeros((n_snaps, n_nodes_local, n_features), dtype=TORCH_FLOAT_DTYPE)
         for i in range(len(data_list)):
             x_full[i,:,:] = data_list[i][var][:n_nodes_local, :]
-        data_mean_ = x_full.mean(axis=(0,1)).to(self.device)
-        data_var_ = x_full.var(axis=(0,1)).to(self.device)
-        n_scale_ = torch.tensor([n_nodes_local * n_snaps], dtype=TORCH_FLOAT_DTYPE, device=self.device)
+        data_mean_ = x_full.mean(axis=(0,1)).to(device)
+        data_var_ = x_full.var(axis=(0,1)).to(device)
+        n_scale_ = torch.tensor([n_nodes_local * n_snaps], dtype=TORCH_FLOAT_DTYPE, device=device)
 
-        data_mean_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=self.device) for _ in range(SIZE)]
-        data_mean_gather = all_gather_tensor(data_mean_gather, data_mean_) 
+        data_mean_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=device) for _ in range(SIZE)]
+        data_mean_gather = mpi_all_gather(data_mean_)
 
-        data_var_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=self.device) for _ in range(SIZE)]
-        data_var_gather = all_gather_tensor(data_var_gather, data_var_)
+        data_var_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=device) for _ in range(SIZE)]
+        data_var_gather = mpi_all_gather(data_var_)
 
-        n_scale_gather = [torch.zeros(1, dtype=TORCH_FLOAT_DTYPE, device=self.device) for _ in range(SIZE)]
-        n_scale_gather = all_gather_tensor(n_scale_gather, n_scale_)
+        n_scale_gather = [torch.zeros(1, dtype=TORCH_FLOAT_DTYPE, device=device) for _ in range(SIZE)]
+        n_scale_gather = mpi_all_gather(n_scale_)
 
         data_mean_gather = torch.stack(data_mean_gather)
         data_var_gather = torch.stack(data_var_gather)
@@ -852,18 +859,14 @@ class Trainer:
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)
-            stats['x'] = [torch.tensor(stats['x'][0]).to(self.device), 
-                          torch.tensor(stats['x'][1]).to(self.device)] 
-            stats['y'] = [torch.tensor(stats['y'][0]).to(self.device), 
-                          torch.tensor(stats['y'][1]).to(self.device)] 
             if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
         else: 
             x_mean, x_std = self.compute_statistics(data['train'],'x')
             y_mean, y_std = self.compute_statistics(data['train'],'y')
             if RANK == 0:
                 np.savez(data_dir + f"/data_stats.npz", 
-                     x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
-                     y_mean=y_mean.cpu().numpy(), y_std=y_std.cpu().numpy(),
+                     x_mean=x_mean, x_std=x_std,
+                     y_mean=y_mean, y_std=y_std,
                 )
             stats['x'] = [x_mean, x_std]
             stats['y'] = [y_mean, y_std]
@@ -925,18 +928,14 @@ class Trainer:
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)
-            stats['x'] = [torch.tensor(stats['x'][0]).to(self.device), 
-                          torch.tensor(stats['x'][1]).to(self.device)] 
-            stats['y'] = [torch.tensor(stats['y'][0]).to(self.device), 
-                          torch.tensor(stats['y'][1]).to(self.device)] 
             if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
         else: 
             if RANK == 0: log.info(f"Computing training data statistics")
             x_mean, x_std = self.compute_statistics(data['train'],'x')
             if RANK == 0:
                 np.savez(data_dir + "/data_stats.npz", 
-                     x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
-                     y_mean=x_mean.cpu().numpy(), y_std=x_std.cpu().numpy(),
+                     x_mean=x_mean, x_std=x_std,
+                     y_mean=x_mean, y_std=x_std,
                 )
             stats['x'] = [x_mean, x_std]
             stats['y'] = [x_mean, x_std]
@@ -1034,11 +1033,24 @@ class Trainer:
         assert self.cfg.batch_size == 1, f"batch_size {self.cfg.batch_size} must be set to 1!"
         assert self.cfg.val_batch_size == 1, f"val_batch_size {self.cfg.batch_size} must be set to 1!"
 
-        train_loader = torch.utils.data.DataLoader(dataset=data['train'], 
+        train_data_scaled = []
+        for item in  data['train']:
+            tdict = {}
+            tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
+            tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+            train_data_scaled.append(tdict)
+        train_loader = torch.utils.data.DataLoader(dataset=train_data_scaled,
                                      batch_size=self.cfg.batch_size,
                                      shuffle=True)
 
-        valid_loader = torch.utils.data.DataLoader(dataset=data['validation'],
+        val_data_scaled = data['validation'].copy()
+        if val_data_scaled[0]:
+            for item in  val_data_scaled:
+                tdict = {}
+                tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
+                tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+                val_data_scaled.append(tdict)
+        valid_loader = torch.utils.data.DataLoader(dataset=val_data_scaled,
                                             batch_size=self.cfg.val_batch_size,
                                             shuffle=False)
 
@@ -1170,7 +1182,7 @@ class Trainer:
         
         # Prediction
         tic = time.time()
-        x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
+        x_scaled = data['x'][0]
         out_gnn = self.model(x = x_scaled,
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,
@@ -1192,7 +1204,7 @@ class Trainer:
 
         # Accumulate loss
         tic = time.time()
-        target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
+        target = data['y'][0]
         n_nodes_local = graph.n_nodes_local
         if SIZE == 1:
             loss = self.loss_fn(pred[:n_nodes_local], target[:n_nodes_local])
@@ -1265,8 +1277,7 @@ class Trainer:
                     buffer_send = None
                     buffer_recv = None
 
-                x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
-                out_gnn = self.model(x = x_scaled,
+                out_gnn = self.model(x = data['x'][0],
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,
                              edge_weight = graph.edge_weight,
@@ -1280,7 +1291,7 @@ class Trainer:
                              batch = graph.batch)   
        
                 # Accumulate loss
-                target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
+                target = data['y'][0]
                 n_nodes_local = graph.n_nodes_local
                 if SIZE == 1:
                     loss = self.loss_fn(out_gnn[:n_nodes_local], target[:n_nodes_local])

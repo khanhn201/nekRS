@@ -12,6 +12,9 @@ public:
   smartredis_client_t(nrs_t *nrs);
   ~smartredis_client_t();
 
+  // Client pointer
+  SmartRedis::Client *_client;
+
   // member functions
   int check_run();
   void init_check_run();
@@ -22,7 +25,6 @@ public:
 
 private:
   // SmartRedis parameters
-  SmartRedis::Client *_client;
   std::string _deployment; // deployment type for DB
   int _npts_per_tensor; // number of points (samples) per tensor being sent to DB
   int _num_tot_tensors; // number of total tensors being sent to all DB

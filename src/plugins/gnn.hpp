@@ -3,6 +3,9 @@
 
 #include "nrs.hpp"
 #include "nekInterfaceAdapter.hpp"
+#ifdef NEKRS_ENABLE_SMARTREDIS
+#include "smartRedis.hpp"
+#endif
 
 typedef struct {
     dlong localId; 

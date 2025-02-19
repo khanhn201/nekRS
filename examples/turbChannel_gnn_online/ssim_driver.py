@@ -128,8 +128,9 @@ class ShootingWorkflow():
         if (self.cfg.sim.affinity):
             nrs_settings.set_gpu_affinity_script(self.cfg.sim.affinity,
                                                  self.cfg.run_args.simprocs_pn)
+        
+        self.nekrs_model = self.exp.create_model(f"nekrs_{self.fine_tune_iter}", nrs_settings)
         if (self.cfg.database.deployment=='colocated'):
-            self.nekrs_model = self.exp.create_model(f"nekrs_{self.fine_tune_iter}", nrs_settings)
             kwargs = {
                 'maxclients': 100000,
                 'threads_per_queue': 4, # set to 4 for improved performance
@@ -154,8 +155,6 @@ class ShootingWorkflow():
                         debug=False,
                         **kwargs
                 )
-        else:
-            self.nekrs_model = self.exp.create_model("nekrs", nrs_settings)
         
         print("Launching the NekRS ...")
         if len(self.cfg.sim.copy_files)>0 or len(self.cfg.sim.link_files)>0:

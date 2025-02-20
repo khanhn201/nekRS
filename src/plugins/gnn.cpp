@@ -1,3 +1,4 @@
+
 #include "nrs.hpp"
 #include "platform.hpp"
 #include "nekInterfaceAdapter.hpp"
@@ -71,7 +72,7 @@ gnn_t::gnn_t(nrs_t *nrs_)
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
 
-    // allocate memory
+    // allocate memory 
     N = mesh->Nelements * mesh->Np; // total number of nodes
     pos_node = new dfloat[N * 3](); 
     node_element_ids = new dlong[N]();
@@ -128,10 +129,10 @@ void gnn_t::gnnSetup()
 
 void gnn_t::gnnWrite()
 {
-    MPI_Comm &comm = platform->comm.mpiComm;
     if (verbose) printf("[RANK %d] -- in gnnWrite() \n", rank);
+    MPI_Comm &comm = platform->comm.mpiComm;
 
-    // output directory 
+    // output directory
     std::filesystem::path currentPath = std::filesystem::current_path();
     currentPath /= "gnn_outputs";
     writePath = currentPath.string();
@@ -146,7 +147,7 @@ void gnn_t::gnnWrite()
         }
     }
     MPI_Barrier(comm);
-
+     
     std::string irank = "_rank_" + std::to_string(rank);
     std::string nranks = "_size_" + std::to_string(size);
 
@@ -158,9 +159,9 @@ void gnn_t::gnnWrite()
     // writeToFile(writePath + "/halo_unique_mask" + irank + nranks, halo_unique_mask, N, 1); 
     // writeToFile(writePath + "/global_ids" + irank + nranks, mesh->globalIds, N, 1);
 
-    // Writing as binary files:
+    // Writing as binary files: 
     //write_edge_index_binary(writePath + "/edge_index" + irank + nranks + ".bin");
-    writeToFileBinary(writePath + "/edge_index" + irank + nranks + ".bin", edge_index, num_edges, 2); 
+    writeToFileBinary(writePath + "/edge_index" + irank + nranks + ".bin", edge_index, num_edges, 2);
     writeToFileBinary(writePath + "/pos_node" + irank + nranks + ".bin", pos_node, N, 3);
     writeToFileBinary(writePath + "/node_element_ids" + irank + nranks + ".bin", node_element_ids, N, 1); 
     writeToFileBinary(writePath + "/local_unique_mask" + irank + nranks + ".bin", local_unique_mask, N, 1); 
@@ -174,8 +175,8 @@ void gnn_t::gnnWrite()
 
     // Writing element-local edge index as text file (small)
     //write_edge_index_element_local(writePath + "/edge_index_element_local" + irank + nranks);
-    writeToFile(writePath + "/edge_index_element_local" + irank + nranks, edge_index_local, num_edges_local, 2);
     //write_edge_index_element_local_vertex(writePath + "/edge_index_element_local_vertex" + irank + nranks);
+    writeToFile(writePath + "/edge_index_element_local" + irank + nranks, edge_index_local, num_edges_local, 2);
     writeToFile(writePath + "/edge_index_element_local_vertex" + irank + nranks, edge_index_local_vertex, num_vertices_local, 2);
 }
 
@@ -193,48 +194,30 @@ void gnn_t::gnnWriteDB(smartredis_client_t* client)
     // Writing the graph data
     client->_client->put_tensor("pos_node" + irank + nranks, pos_node, {num_nodes,3},
                     SRTensorTypeDouble, SRMemLayoutContiguous);
-    writeToFileBinary(writePath + "/pos_node" + irank + nranks + ".bin", pos_node, num_nodes, 3);
-    
     client->_client->put_tensor("node_element_ids" + irank + nranks, node_element_ids, {num_nodes,1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFileBinary(writePath + "/node_element_ids" + irank + nranks + ".bin", node_element_ids, num_nodes, 1); 
-    
     client->_client->put_tensor("local_unique_mask" + irank + nranks, local_unique_mask, {num_nodes,1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFileBinary(writePath + "/local_unique_mask" + irank + nranks + ".bin", local_unique_mask, num_nodes, 1); 
-    
     client->_client->put_tensor("halo_unique_mask" + irank + nranks, halo_unique_mask, {num_nodes,1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFileBinary(writePath + "/halo_unique_mask" + irank + nranks + ".bin", halo_unique_mask, num_nodes, 1); 
-    
     client->_client->put_tensor("global_ids" + irank + nranks, mesh->globalIds, {num_nodes,1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFileBinary(writePath + "/global_ids" + irank + nranks + ".bin", mesh->globalIds, num_nodes, 1);
-
+    
     // Writing edge information
     client->_client->put_tensor("edge_index" + irank + nranks, edge_index, {num_edg,2},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFileBinary(writePath + "/edge_index" + irank + nranks + ".bin", edge_index, num_edg, 2);
     client->_client->put_tensor("edge_index_element_local" + irank + nranks, edge_index_local, {num_edg_l,2},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFile(writePath + "/edge_index_element_local" + irank + nranks, edge_index_local, num_edg_l, 2);
     client->_client->put_tensor("edge_index_element_local_vertex" + irank + nranks, edge_index_local_vertex, {num_vert_l,2},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFile(writePath + "/edge_index_element_local_vertex" + irank + nranks, edge_index_local_vertex, num_vert_l, 2);
-    //write_edge_index_binary(writePath + "/edge_index" + irank + nranks + ".bin");
-    //write_edge_index_element_local(writePath + "/edge_index_element_local" + irank + nranks);
-    //write_edge_index_element_local_vertex(writePath + "/edge_index_element_local_vertex" + irank + nranks);
 
-    // Writing some graph staristics
+    // Writing some graph statistics
     client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
     client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
     client->_client->put_tensor("N" + irank + nranks, &N, {1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
-    writeToFile(writePath + "/Nelements" + irank + nranks, &mesh->Nelements, 1, 1);
-    writeToFile(writePath + "/Np" + irank + nranks, &mesh->Np, 1, 1);
-    writeToFile(writePath + "/N" + irank + nranks, &N, 1, 1);
 }
 #endif // NEKRS_ENABLE_SMARTREDIS
 
@@ -242,18 +225,17 @@ void gnn_t::get_node_positions()
 {
     if (verbose) printf("[RANK %d] -- in get_node_positions() \n", rank);
     auto [x, y, z] = mesh->xyzHost();
-    for (int n=0; n < mesh->Np * mesh->Nelements; n++)
+    for (int n=0; n < N; n++)
     {
-        pos_node[n + 0*(mesh->Np * mesh->Nelements)] = x[n];
-        pos_node[n + 1*(mesh->Np * mesh->Nelements)] = y[n];
-        pos_node[n + 2*(mesh->Np * mesh->Nelements)] = z[n];
+        pos_node[n + 0*N] = x[n];
+        pos_node[n + 1*N] = y[n];
+        pos_node[n + 2*N] = z[n];
     }
 }
 
 void gnn_t::get_node_element_ids()
 {
     if (verbose) printf("[RANK %d] -- in get_node_element_ids() \n", rank);
-    dlong N = mesh->Nelements * mesh->Np; // total number of nodes 
     for (int e = 0; e < mesh->Nelements; e++) // loop through the element 
     {
         for (int i = 0; i < mesh->Np; i++) // loop through the gll nodes 
@@ -267,7 +249,6 @@ void gnn_t::get_node_masks()
 {
 	if (verbose) printf("[RANK %d] -- in get_node_masks() \n", rank);
 
-    dlong N = mesh->Nelements * mesh->Np; // total number of nodes 
     hlong *ids =  mesh->globalIds; // global node ids 
     MPI_Comm &comm = platform->comm.mpiComm; // mpi comm 
     occa::device device = platform->device.occaDevice(); // occa device 
@@ -682,10 +663,17 @@ void gnn_t::get_edge_index()
 {
     if (verbose) printf("[RANK %d] -- in get_edge_index() \n", rank);
 
+    // loop through graph nodes
+    num_edges = 0;
+    for (dlong i = 0; i < N; i++)
+    {               
+        dlong num_nbr = graphNodes[i].nbrIds.size();
+        num_edges += num_nbr;
+    }
+
     edge_index = new dlong[num_edges * 2]();
 
-    // loop through graph nodes
-    dlong c = 0;
+    hlong c = 0;
     for (dlong i = 0; i < N; i++)
     {               
         int num_nbr = graphNodes[i].nbrIds.size();
@@ -694,8 +682,8 @@ void gnn_t::get_edge_index()
         for (int j = 0; j < num_nbr; j++)
         {           
             dlong idx_nei = graphNodes[i].nbrIds[j];
-            edge_index[c*2] = idx_nei;
-            edge_index[c*2+1] = idx_own;
+            edge_index[c+0*num_edges] = idx_nei;
+            edge_index[c+1*num_edges] = idx_own;
             c++;
         }
     }
@@ -721,8 +709,8 @@ void gnn_t::get_edge_index_element_local()
         for (int j = 0; j < num_nbr; j++)
         {           
             dlong idx_nei = graphNodes_element[i].nbrIds[j];  
-            edge_index_local[c*2] = idx_nei;
-            edge_index_local[c*2+1] = idx_own;
+            edge_index_local[c+0*num_edges_local] = idx_nei;
+            edge_index_local[c+1*num_edges_local] = idx_own;
             c++;
         }
     }         
@@ -743,14 +731,14 @@ void gnn_t::get_edge_index_element_local_vertex()
         for (int j = 0; j < n_vertex_nodes; j++)
         {
             dlong idx_nei = mesh->vertexNodes[j];
-            edge_index_local_vertex[c*2] = idx_nei;
-            edge_index_local_vertex[c*2+1] = idx_own;
+            edge_index_local_vertex[c+0*num_vertices_local] = idx_nei;
+            edge_index_local_vertex[c+1*num_vertices_local] = idx_own;
             c++;
         }
     }
 }
 
-/*
+
 void gnn_t::write_edge_index(const std::string& filename)
 {
     if (verbose) printf("[RANK %d] -- in write_edge_index() \n", rank);
@@ -829,7 +817,7 @@ void gnn_t::write_edge_index_element_local(const std::string& filename)
             file_cpu << idx_nei << '\t' << idx_own << '\n'; 
         }
     }           
-}
+} 
 
 void gnn_t::write_edge_index_element_local_vertex(const std::string& filename)
 {
@@ -882,4 +870,4 @@ void gnn_t::write_edge_index_element_local_vertex_binary(const std::string& file
         }
     }
 }
-*/
+

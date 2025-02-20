@@ -1,3 +1,4 @@
+
 #if !defined(nekrs_gnn_hpp_)
 #define nekrs_gnn_hpp_
 
@@ -38,13 +39,14 @@ public:
     gnn_t(nrs_t *nrs);
     ~gnn_t(); 
 
+    std::string writePath;
+
     // member functions 
     void gnnSetup();
     void gnnWrite();
+#ifdef NEKRS_ENABLE_SMARTREDIS
     void gnnWriteDB(smartredis_client_t* client);
-
-    // where gnn output files are written, if "write=True". 
-    std::string writePath;
+#endif
 
 private:
     // MPI stuff 
@@ -88,20 +90,21 @@ private:
     void get_edge_index();
     void get_edge_index_element_local();
     void get_edge_index_element_local_vertex();
-
-    //void write_edge_index(const std::string& filename);
-    //void write_edge_index_element_local(const std::string& filename);
-    //void write_edge_index_element_local_vertex(const std::string& filename);
+    
+    void write_edge_index(const std::string& filename);
+    void write_edge_index_element_local(const std::string& filename);
+    void write_edge_index_element_local_vertex(const std::string& filename);
 
     // binary write functions 
-    //void write_edge_index_binary(const std::string& filename);
-    //void write_edge_index_element_local_vertex_binary(const std::string& filename);
+    void write_edge_index_binary(const std::string& filename);
+    void write_edge_index_element_local_vertex_binary(const std::string& filename);
 
     // for prints 
-    bool verbose = true;
+    bool verbose = true; 
 
     // model features
     bool multiscale = false;
 };
 
 #endif
+

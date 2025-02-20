@@ -16,6 +16,7 @@ def main():
 
     for root, dirs, files in os.walk(args.REF):
         for file_name in files:
+            print(f'Checking {file_name} ...', flush=True)
             ext = file_name.split('.')[-1]
             if ext == "bin":
                 ref_data = np.fromfile(args.REF+"/"+file_name)

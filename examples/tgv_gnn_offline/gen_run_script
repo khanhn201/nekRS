@@ -2,9 +2,9 @@
 set -a
 
 SYSTEM="aurora"
-NEKRS_HOME="/flare/Aurora_deployment/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
+NEKRS_HOME="/flare/datascience/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
 VENV_PATH=""
-PROJ_ID="Aurora_deployment"
+PROJ_ID="datascience"
 QUEUE="debug"
 
 if [ ${SYSTEM} == "aurora" ]; then

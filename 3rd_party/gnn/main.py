@@ -11,6 +11,7 @@ from typing import Optional, Union, Callable
 import numpy as np
 import hydra
 import time
+import math
 from omegaconf import DictConfig, OmegaConf
 
 try:
@@ -1437,7 +1438,15 @@ def train(cfg: DictConfig) -> None:
                 break
         if trainer.iteration >= trainer.total_iterations:
             break
-
+    
+    # Correctness validation
+    if cfg.target_loss != 0:
+        print(cfg.target_loss,loss.item())
+        if math.isclose(cfg.target_loss,loss.item(),rel_tol=0.001):
+            if RANK==0: print('\n\nSUCCESS! GNN training validated!\n\n')
+        else:
+            if RANK==0: print('\n\nWARNING! GNN training failed validation!\n\n')
+    
     #Save model
     trainer.save_model()
 

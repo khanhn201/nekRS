@@ -2,7 +2,7 @@
 verbose: False
 seed: 12
 backend: nccl
-num_threads: 0
+num_threads: 1
 logfreq: 10
 ckptfreq: 500
 batch_size: 1
@@ -14,6 +14,7 @@ master_port: none
 
 # Modeling task
 model_task: "time independent" # {time independent, time dependent}
+consistency: True
 use_residual: False
 
 # learning rate schedule 

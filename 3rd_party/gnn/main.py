@@ -262,7 +262,7 @@ class Trainer:
                  cfg: DictConfig, 
                  scaler: Optional[GradScaler] = None,
                  client: Optional[OnlineClient] = None
-    ):
+    ) -> None:
         self.cfg = cfg
         self.rank = RANK
         if scaler is None:
@@ -271,6 +271,12 @@ class Trainer:
         self.backend = self.cfg.backend
         self.client = client
 
+        # ~~~ Perform some checks
+        if not cfg.consistency:
+            assert cfg.halo_swap_mode == 'none', \
+                "For inconsistent model, set halo_swap_mode=none"
+
+        # ~~~ Initialize DDP
         if WITH_DDP:
             os.environ['RANK'] = str(RANK)
             os.environ['WORLD_SIZE'] = str(SIZE)
@@ -289,27 +295,36 @@ class Trainer:
         # ~~~~ Init torch stuff 
         self.setup_torch()
 
+        # ~~~~ If online, wait for graph data to be populated
+        if self.cfg.online:
+            if RANK == 0: log.info('Waiting for graph data from simulation ...')
+            while True:
+                if (self.client.get_array('N',0,1)):
+                    break
+            COMM.Barrier()
+            if RANK == 0: log.info('Graph data available from simulation')
+
         # ~~~~ Setup local graph 
         self.data_reduced, \
             self.data_full, \
             self.idx_full2reduced, \
             self.idx_reduced2full = self.setup_local_graph()
-
-        # ~~~~ Setup halo nodes 
-        self.neighboring_procs = []
-        self.setup_halo()
-
+        
         # ~~~~ Setup data 
         self.data = self.setup_data()
         if RANK == 0: log.info('Done with setup_data')
 
-        # ~~~~ Setup halo exchange masks
-        self.mask_send, self.mask_recv = self.build_masks()
-        if RANK == 0: log.info('Done with build_masks')
+        if cfg.consistency:
+            # ~~~~ Setup halo nodes 
+            self.neighboring_procs = []
+            self.setup_halo()
 
-        # ~~~~ Initialize send/recv buffers on device (if applicable)
-        self.buffer_send, self.buffer_recv, self.n_buffer_rows = self.build_buffers(self.cfg.hidden_channels)
-        if RANK == 0: log.info('Done with build_buffers')
+            # ~~~~ Setup halo exchange masks
+            self.mask_send, self.mask_recv = self.build_masks()
+            if RANK == 0: log.info('Done with build_masks')
+
+            self.buffer_send, self.buffer_recv, self.n_buffer_rows = self.build_buffers(self.cfg.hidden_channels)
+            if RANK == 0: log.info('Done with build_buffers')
 
         # ~~~~ Build model and move to gpu 
         self.model = self.build_model()
@@ -506,7 +521,7 @@ class Trainer:
     def setup_torch(self):
         torch.manual_seed(self.cfg.seed)
         np.random.seed(self.cfg.seed)
-        torch.set_num_threads(1)
+        torch.set_num_threads(self.cfg.num_threads)
 
     def halo_swap(self, input_tensor, buff_send, buff_recv):
         """
@@ -775,7 +790,6 @@ class Trainer:
 
         return 
 
-
     def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
         #data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,n_colms)) 
         data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
@@ -835,11 +849,13 @@ class Trainer:
         output_field = 'p' # pressure
 
         # read files
-        files_temp = os.listdir(data_dir)
-        input_files = [item for item in files_temp \
-                       if (f'fld_{input_field}' in item) and (f'rank_{RANK}' in item)]
+        if not self.cfg.online:
+            file_list = os.listdir(data_dir)
+        else:
+        input_files = [item for item in file_list \
+                    if (f'fld_{input_field}' in item) and (f'rank_{RANK}' in item)]
         input_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
-        output_files = [item for item in files_temp \
+        output_files = [item for item in file_list \
                         if (f'fld_{output_field}' in item) and (f'rank_{RANK}' in item)]
         output_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
         assert len(input_files) == len(output_files), \
@@ -1182,7 +1198,7 @@ class Trainer:
                 
         self.s_optimizer.zero_grad()
 
-        # re-allocate send buffer 
+        # re-allocate send buffer
         self.timers['bufferInit'][self.timer_step] = time.time()
         if self.cfg.halo_swap_mode != 'none':
             for i in range(SIZE):
@@ -1193,8 +1209,8 @@ class Trainer:
                     self.buffer_send[i] = torch.empty_like(self.buffer_send[i])
                     self.buffer_recv[i] = torch.empty_like(self.buffer_recv[i])
         else:
-            buffer_send = None
-            buffer_recv = None
+            self.buffer_send = None
+            self.buffer_recv = None
         self.timers['bufferInit'][self.timer_step] = time.time() - self.timers['bufferInit'][self.timer_step]
         
         # Prediction
@@ -1223,7 +1239,7 @@ class Trainer:
         self.timers['loss'][self.timer_step] = time.time()
         target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
         n_nodes_local = graph.n_nodes_local
-        if SIZE == 1:
+        if SIZE == 1 or not self.cfg.consistency:
             loss = self.loss_fn(pred[:n_nodes_local], target[:n_nodes_local])
             effective_nodes = n_nodes_local 
         else: # custom 
@@ -1291,8 +1307,8 @@ class Trainer:
                             self.buffer_send[i] = torch.empty_like(self.buffer_send[i])
                             self.buffer_recv[i] = torch.empty_like(self.buffer_recv[i])
                 else:
-                    buffer_send = None
-                    buffer_recv = None
+                    self.buffer_send = None
+                    self.buffer_recv = None
 
                 x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
                 out_gnn = self.model(x = x_scaled,
@@ -1311,7 +1327,7 @@ class Trainer:
                 # Accumulate loss
                 target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
                 n_nodes_local = graph.n_nodes_local
-                if SIZE == 1:
+                if SIZE == 1 or not self.cfg.consistency:
                     loss = self.loss_fn(out_gnn[:n_nodes_local], target[:n_nodes_local])
                     effective_nodes = n_nodes_local 
                 else: # custom 
@@ -1379,8 +1395,10 @@ class Trainer:
         return [gradnorm]
 
 
-def train(cfg: DictConfig) -> None:
-    trainer = Trainer(cfg)
+def train(cfg: DictConfig,
+          client: Optional[OnlineClient] = None
+    ) -> None:
+    trainer = Trainer(cfg, client=client)
     trainer.writeGraphStatistics()
     n_nodes_local = trainer.data_reduced.n_nodes_local.item()
 
@@ -1447,8 +1465,15 @@ def train(cfg: DictConfig) -> None:
         else:
             if RANK==0: print('\n\nWARNING! GNN training failed validation!\n\n')
     
-    #Save model
+    # Save model
     trainer.save_model()
+
+    # Tell simulation to exit
+    COMM.Barrier()
+    if (RANK % LOCAL_RANK == 0):
+        log.info(f"[RANK {RANK}] -- Telling NekRS to quit ...")
+        arrMLrun = np.int32(np.zeros(1))
+        client.put_array('check-run',arrMLrun)
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')
@@ -1467,6 +1492,7 @@ def main(cfg: DictConfig) -> None:
     else:
         client = OnlineClient()
         train(cfg, client)
+    
     cleanup()
 
 if __name__ == '__main__':

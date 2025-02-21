@@ -184,6 +184,7 @@ void gnn_t::gnnWrite()
 void gnn_t::gnnWriteDB(smartredis_client_t* client)
 {
     if (verbose) printf("[RANK %d] -- in gnnWriteDB() \n", rank);
+    MPI_Comm &comm = platform->comm.mpiComm;
     unsigned long int num_nodes = N;
     unsigned long int num_edg = num_edges;
     unsigned long int num_edg_l = num_edges_local;
@@ -212,12 +213,17 @@ void gnn_t::gnnWriteDB(smartredis_client_t* client)
                     SRTensorTypeInt64, SRMemLayoutContiguous);
 
     // Writing some graph statistics
-    client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
-    client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
-    client->_client->put_tensor("N" + irank + nranks, &N, {1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
+    if (rank % client->_num_db_tensors == 0) {
+        client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
+                        SRTensorTypeInt64, SRMemLayoutContiguous);
+        client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
+                        SRTensorTypeInt64, SRMemLayoutContiguous);
+        client->_client->put_tensor("N" + irank + nranks, &N, {1},
+                        SRTensorTypeInt64, SRMemLayoutContiguous);
+    }
+
+    MPI_Barrier(comm);
+    if (verbose) printf("[RANK %d] -- done sending graph data to DB \n", rank);
 }
 #endif // NEKRS_ENABLE_SMARTREDIS
 

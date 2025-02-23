@@ -2,8 +2,9 @@ import os
 from typing import Optional, Union
 from omegaconf import DictConfig
 import numpy as np
+from time import sleep
 
-from smartredis import Client
+from smartredis import Client, Dataset
 
 class OnlineClient:
     """Class for the online training client
@@ -26,11 +27,14 @@ class OnlineClient:
             else:
                 self.client = Client(address=SSDB,cluster=True)
 
-    def get_array(self, file_name: str) -> np.ndarray:
+    def get_array(self, file_name: Union[str, Dataset]) -> np.ndarray:
         """Get an array frpm staging area / simulation
         """
         if self.backend == "smartredis":
-            array = self.client.get_tensor(file_name)
+            if isinstance(file_name, str):
+                array = self.client.get_tensor(file_name)
+            else:
+                array = file_name.get_tensor('data')
         return array
     
     def put_array(self, file_name: str, array: np.ndarray) -> None:
@@ -39,3 +43,19 @@ class OnlineClient:
         if self.backend == "smartredis":
             self.client.put_tensor(file_name, array)
 
+    def get_file_list(self, list_name: str) -> list:
+        """Get the list of files to read
+        """
+        if self.backend == "smartredis":
+            # Ensure the list of DataSets is available
+            while True:
+                list_length = self.client.get_list_length(list_name)
+                if list_length == 0:
+                    sleep(1)
+                    continue
+                else:
+                    break
+            
+            # Grab list of datasets
+            file_list = self.client.get_datasets_from_list(list_name)
+        return file_list

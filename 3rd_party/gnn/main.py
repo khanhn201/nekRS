@@ -852,6 +852,7 @@ class Trainer:
         if not self.cfg.online:
             file_list = os.listdir(data_dir)
         else:
+            file_list = self.client.get_file_list('training_data')
         input_files = [item for item in file_list \
                     if (f'fld_{input_field}' in item) and (f'rank_{RANK}' in item)]
         input_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
@@ -864,9 +865,13 @@ class Trainer:
         # populate dataset
         if RANK == 0: log.info("Loading field data...")
         data_list = []
+        if not self.cfg.online:
+            path_prepend = data_dir + '/'
+        else:
+            path_prepend = ''
         for i in range(len(input_files)):
-            path_x = data_dir + '/' + input_files[i]
-            path_y = data_dir + '/' + output_files[i]
+            path_x = path_prepend + input_files[i]
+            path_y = path_prepend + output_files[i]
             data_x = self.prepare_snapshot_data(path_x, 3)
             data_y = self.prepare_snapshot_data(path_y, 1)
             data_list.append({'x': data_x, 'y':data_y})

@@ -1,3 +1,4 @@
+#include "nekrs.hpp"
 #include "smartRedis.hpp"
 #include "gnn.hpp"
 
@@ -165,10 +166,14 @@ void UDF_ExecuteStep(double time, int tstep)
                 P, nrs->fieldOffset, 1);
 
     unsigned long int field_offset = nrs->fieldOffset;
-    client->_client->put_tensor("/fld_u_time_" + time_rounded_string + irank + nranks, U, 
-                                {field_offset,3}, SRTensorTypeDouble, SRMemLayoutContiguous);
-    client->_client->put_tensor("/fld_p_time_" + time_rounded_string + irank + nranks, P, 
-                                {field_offset,1}, SRTensorTypeDouble, SRMemLayoutContiguous);
+    //client->_client->put_tensor("fld_u_time_" + time_rounded_string + irank + nranks, U, 
+    //                            {field_offset,3}, SRTensorTypeDouble, SRMemLayoutContiguous);
+    //client->_client->put_tensor("fld_p_time_" + time_rounded_string + irank + nranks, P, 
+    //                            {field_offset,1}, SRTensorTypeDouble, SRMemLayoutContiguous);
+    client->append_dataset_to_list("fld_u_time_" + time_rounded_string + irank + nranks, "data",
+                                   "training_data", U, field_offset, 3);
+    client->append_dataset_to_list("fld_p_time_" + time_rounded_string + irank + nranks, "data",
+                                   "training_data", P, field_offset, 1);
     MPI_Barrier(platform->comm.mpiComm);
     client->put_step_num(tstep);
   }

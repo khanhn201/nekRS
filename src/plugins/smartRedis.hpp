@@ -15,10 +15,19 @@ public:
   // Client pointer
   SmartRedis::Client *_client;
 
+  // member data
+  int _num_db_tensors; // number of tensors being sent to each DB
+
   // member functions
-  int check_run();
   void init_check_run();
+  int check_run();
   void put_step_num(int tstep);
+  void append_dataset_to_list(const std::string& dataset_name,
+    const std::string& tensor_name,
+    const std::string& list_name,
+    dfloat* data,
+    unsigned long int num_rows,
+    unsigned long int num_cols);
   void init_wallModel_train();
   void put_wallModel_data(int tstep);
   void run_wallModel(int tstep);
@@ -28,7 +37,6 @@ private:
   std::string _deployment; // deployment type for DB
   int _npts_per_tensor; // number of points (samples) per tensor being sent to DB
   int _num_tot_tensors; // number of total tensors being sent to all DB
-  int _num_db_tensors; // number of tensors being sent to each DB
   int _db_nodes; // number of DB nodes (always 1 for co-located DB)
   int _head_rank; // rank ID of the head rank on each node (metadata transfer with co-DB)
 

@@ -47,7 +47,7 @@ if [ ${DEPLOYMENT} == "colocated" ]; then
   QUEUE=$QUEUE \
   DEPLOYMENT=$DEPLOYMENT \
   VENV_PATH=$VENV_PATH \
-  ./${script_name} turbChannel $NODES 00:30
+  ./${script_name} tgv $NODES 00:30
 elif [ ${DEPLOYMENT} == "clustered" ]; then
   NODES=`cat $PBS_NODEFILE | wc -l`
   echo "Running on $NODES total nodes"
@@ -63,7 +63,7 @@ elif [ ${DEPLOYMENT} == "clustered" ]; then
   DEPLOYMENT=$DEPLOYMENT \
   VENV_PATH=$VENV_PATH \
   DB_NODES=$DB_NODES SIM_NODES=$SIM_NODES TRAIN_NODES=$TRAIN_NODES \
-  ./${script_name} turbChannel $NODES 00:30
+  ./${script_name} tgv $NODES 00:30
 else
   echo Please select between clustered and colocated deployment of the workflow
 fi

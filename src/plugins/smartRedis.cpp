@@ -114,6 +114,25 @@ void smartredis_client_t::put_step_num(int tstep)
   fflush(stdout);
 }
 
+// Append a new DataSet to a list and put in DB
+void smartredis_client_t::append_dataset_to_list(const std::string& dataset_name,
+  const std::string& tensor_name,
+  const std::string& list_name,
+  dfloat* data,
+  unsigned long int num_rows,
+  unsigned long int num_cols) 
+{
+  if (_rank == 0)
+    printf("\nAdding dataset to list ...\n");
+  SmartRedis::DataSet dataset(dataset_name);
+  dataset.add_tensor(tensor_name,  data, {num_rows,num_cols}, 
+                     SRTensorTypeDouble, SRMemLayoutContiguous);
+  _client->put_dataset(dataset);
+  _client->append_to_list(list_name,dataset);
+  if (_rank == 0)
+    printf("Done\n\n");
+}
+
 // Initialize training for the wall shear stress model
 void smartredis_client_t::init_wallModel_train()
 {

@@ -2,5 +2,5 @@
 
 rm -r nekRS-ML outputs
 rm affinity_* ssim_config.yaml 
-rm turbChannel.par turbChannel.udf turbChannel.box run.sh
+rm run.sh
 

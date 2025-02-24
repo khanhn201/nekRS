@@ -110,7 +110,7 @@ void UDF_Setup()
   graph = new gnn_t(nrs);
   graph->gnnSetup();
   graph->gnnWrite();
-  graph->gnnWriteDB(client)
+  graph->gnnWriteDB(client);
 
   auto mesh = nrs->mesh;
 

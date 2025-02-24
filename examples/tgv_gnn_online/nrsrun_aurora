@@ -20,6 +20,7 @@ set -e
 : ${VENV_PATH:=""}
 #--------------------------------------
 
+cp tgv.par.safe tgv.par
 
 source $NEKRS_HOME/bin/nrsqsub_utils
 setup $# 1
@@ -94,7 +95,7 @@ if [ ${DEPLOYMENT} == "colocated"  ]; then
   TRAIN_NODES=$nodes
   SIM_PROCS=$(( SIM_NODES * SIM_RANKS_PER_NODE ))
   TRAIN_PROCS=$(( TRAIN_NODES * TRAIN_RANKS_PER_NODE ))
-  echo "    db_nodes: 1" >> $CFILE
+  echo "    db_nodes: ${DB_NODES}" >> $CFILE
   echo "    sim_nodes: ${SIM_NODES}" >> $CFILE
   echo "    ml_nodes: ${SIM_NODES}" >> $CFILE
   echo "    simprocs: ${SIM_PROCS}" >> $CFILE
@@ -126,15 +127,14 @@ echo "sim:" >> $CFILE
 echo "    executable: \"${NEKRS_HOME}/bin/nekrs\"" >> $CFILE
 echo "    arguments: \"--setup ${case}.par --backend ${NEKRS_BACKEND} --device-id 0\"" >> $CFILE
 echo "    affinity: \"./${SAFF_FILE}\"" >> $CFILE
-echo "    copy_files: [\"./${case}.usr\",\"./${case}.par\",\"./${case}.udf\",\"./${case}.re2\",\"./${case}.box\"]" >> $CFILE
+echo "    copy_files: [\"./${case}.usr\",\"./${case}.par\",\"./${case}.udf\",\"./${case}.re2\"]" >> $CFILE
 echo "    link_files: [\"./${SAFF_FILE}\",\".cache\"]" >> $CFILE
 echo "" >> $CFILE
 echo "# Trainer config" >> $CFILE
 echo "train:" >> $CFILE
-echo "    executable: \"${PWD}/trainer.py\"" >> $CFILE
+echo "    executable: \"../../3rd_party/gnn/main.py\"" >> $CFILE
 echo "    affinity: \"./${TAFF_FILE}\"" >> $CFILE
-echo "    device: \"xpu\"" >> $CFILE
-echo "    logging: \"no\"" >> $CFILE
+echo "    arguments: \"backend=ccl halo_swap_mode=all_to_all_opt online=True client.db_nodes=${DB_NODES} consistenty=False target_loss=1.6206e-04\"" >> $CFILE
 echo "    copy_files: []" >> $CFILE
 echo "    link_files: [\"./${TAFF_FILE}\"]" >> $CFILE
 

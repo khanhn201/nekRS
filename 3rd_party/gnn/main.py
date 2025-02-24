@@ -299,7 +299,8 @@ class Trainer:
         if self.cfg.online:
             if RANK == 0: log.info('Waiting for graph data from simulation ...')
             while True:
-                if (self.client.get_array('N',0,1)):
+                if (self.client.file_exists('N')):
+                    time.sleep(0.5)
                     break
             COMM.Barrier()
             if RANK == 0: log.info('Graph data available from simulation')
@@ -1490,12 +1491,14 @@ def main(cfg: DictConfig) -> None:
         print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
         print('RUNNING WITH INPUTS:')
         print(OmegaConf.to_yaml(cfg)) 
-        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~', flush=True)
 
     if not cfg.online:
         train(cfg)
     else:
-        client = OnlineClient()
+        client = OnlineClient(cfg)
+        COMM.Barrier()
+        if RANK == 0: print('Initialized Online Client!\n', flush=True)
         train(cfg, client)
     
     cleanup()

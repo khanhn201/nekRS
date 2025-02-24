@@ -27,6 +27,12 @@ class OnlineClient:
             else:
                 self.client = Client(address=SSDB,cluster=True)
 
+    def file_exists(self, file_name: str) -> bool:
+        """Check if a file (or key) exists
+        """
+        if self.backend == "smartredis":
+            return self.client.key_exists(file_name)
+
     def get_array(self, file_name: Union[str, Dataset]) -> np.ndarray:
         """Get an array frpm staging area / simulation
         """

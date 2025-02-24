@@ -81,18 +81,6 @@ def launch_coDB(cfg, nodelist, nNodes):
                 **kwargs
                 )
     
-    # Load a model for inference
-    if (cfg.inference.model_path):
-        colo_model.add_ml_model('model',
-                                cfg.inference.backend,
-                                model=None,  # this is used if model is in memory
-                                model_path=cfg.inference.model_path,
-                                device=cfg.inference.device,
-                                batch_size=cfg.inference.batch,
-                                min_batch_size=cfg.inference.batch,
-                                devices_per_node=cfg.inference.devices_per_node,
-                                inputs=None, outputs=None)
-
     # Start the co-located model
     block = False if cfg.train.executable else True
     print("Launching NekRS and SmartSim co-located DB ... ")
@@ -105,10 +93,7 @@ def launch_coDB(cfg, nodelist, nNodes):
     # Setup and launch the training script
     if (cfg.train.executable):
         ml_exe = cfg.train.executable
-        ml_exe = ml_exe + f' --dbnodes={cfg.run_args.db_nodes}' \
-                        + f' --device={cfg.train.device}' \
-                        + f' --ppn={cfg.run_args.mlprocs_pn}' \
-                        + f' --logging={cfg.train.logging}'
+        ml_exe = ml_exe + ' ' + cfg.train.arguments
         SSDB = colo_model.run_settings.env_vars['SSDB']
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings(
@@ -217,18 +202,6 @@ def launch_clDB(cfg, nodelist, nNodes):
 
     nrs_model = exp.create_model("nekrs", nrs_settings)
 
-    # Load a model for inference
-    if (cfg.inference.model_path):
-        nrs_model.add_ml_model('model',
-                                cfg.inference.backend,
-                                model=None,  # this is used if model is in memory
-                                model_path=cfg.inference.model_path,
-                                device=cfg.inference.device,
-                                batch_size=cfg.inference.batch,
-                                min_batch_size=cfg.inference.batch,
-                                devices_per_node=cfg.inference.devices_per_node,
-                                inputs=None, outputs=None)
-
     # Start the client model
     print("Launching the NekRS ...")
     block = False if cfg.train.executable else True
@@ -241,10 +214,7 @@ def launch_clDB(cfg, nodelist, nNodes):
     # Setup and launch the training script
     if (cfg.train.executable):
         ml_exe = cfg.train.executable
-        ml_exe = ml_exe + f' --dbnodes={cfg.run_args.db_nodes}' \
-                        + f' --device={cfg.train.device}' \
-                        + f' --ppn={cfg.run_args.mlprocs_pn}' \
-                        + f' --logging={cfg.train.logging}'
+        ml_exe = ml_exe + ' ' + cfg.train.arguments
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings(
                            'python',

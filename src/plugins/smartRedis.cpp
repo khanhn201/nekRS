@@ -56,12 +56,12 @@ smartredis_client_t::~smartredis_client_t()
 // Initialize the check-run tensor on DB
 void smartredis_client_t::init_check_run()
 {
-  std::vector<int> check_run(2,0);
-  check_run[0] = 1; check_run[1] = 1;
+  std::vector<int> check_run(1);
+  check_run[0] = 1;
   std::string run_key = "check-run";
 
-  if (_rank%_num_db_tensors == 0) {
-    _client->put_tensor(run_key, check_run.data(), {2},
+  if (_rank % _num_db_tensors == 0) {
+    _client->put_tensor(run_key, check_run.data(), {1},
                     SRTensorTypeInt32, SRMemLayoutContiguous);
   }
   MPI_Barrier(platform->comm.mpiComm);
@@ -75,11 +75,11 @@ int smartredis_client_t::check_run()
 {
   int exit_val;
   std::string run_key = "check-run";
-  int *check_run = new int[2]();
+  int *check_run = new int[1]();
 
   // Check value of check-run tensor in DB from head rank
   if (_rank%_num_db_tensors == 0) {
-    _client->unpack_tensor(run_key, check_run, {2},
+    _client->unpack_tensor(run_key, check_run, {1},
                        SRTensorTypeInt32, SRMemLayoutContiguous);
     exit_val = check_run[0];
   }

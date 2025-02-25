@@ -134,7 +134,7 @@ echo "# Trainer config" >> $CFILE
 echo "train:" >> $CFILE
 echo "    executable: \"${NEKRS_HOME}/3rd_party/gnn/main.py\"" >> $CFILE
 echo "    affinity: \"./${TAFF_FILE}\"" >> $CFILE
-echo "    arguments: \"backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False target_loss=1.6206e-04\"" >> $CFILE
+echo "    arguments: \"backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False target_loss=3.2243e-04 verbose=True\"" >> $CFILE
 echo "    copy_files: []" >> $CFILE
 echo "    link_files: [\"./${TAFF_FILE}\"]" >> $CFILE
 

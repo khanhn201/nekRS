@@ -477,7 +477,7 @@ class Trainer:
 
         # Get the polynomial order -- for naming the model
         try:
-            main_path = self.cfg.gnn_outputs_path
+            main_path = self.cfg.gnn_outputs_path if not self.cfg.online else ''
             #Np = np.loadtxt(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
             Np = self.load_data(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
             poly = np.cbrt(Np) - 1.
@@ -725,11 +725,9 @@ class Trainer:
         
         # ~~~~ Get positions and global node index
         if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
-        #pos_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
+        #pos = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
         pos = self.load_data(path_to_pos_full, extension='.bin').reshape((-1,3))
         pos = pos.astype(NP_FLOAT_DTYPE)
-        #if RANK==0: log.info(f'pos: {pos.shape} , {pos_ref.shape}')
-        #assert np.allclose(pos,pos_ref)
 
         pos_orig = np.copy(pos)
 
@@ -737,35 +735,27 @@ class Trainer:
         L_z = 2. 
         # pos[:,2] = np.cos(2.*np.pi*pos[:,2]/L_z) # cosine
         pos[:,2] = np.abs((pos[:,2] % L_z) - L_z / 2) # piecewise linear 
-        #gli_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
+        #gli = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
         gli = self.load_data(path_to_glob_ids,dtype=np.int64,extension='.bin').reshape((-1,1))
-        #if RANK==0: log.info(f'gli: {gli.shape} , {gli_ref.shape}')
-        #assert np.allclose(gli,gli_ref)
 
         # ~~~~ Get edge index
         if self.cfg.verbose: log.info('[RANK %d]: Loading edge index' %(RANK))
-        #ei_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
+        #ei = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
         ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin') 
         if not self.cfg.online:
             ei = ei.reshape((-1,2)).T
         ei = ei.astype(np.int64) # sb: int64 for edge_index 
-        #if RANK==0: log.info(f'ei: {ei.shape} , {ei_ref.shape}')
-        #assert np.allclose(ei,ei_ref)
         
         # ~~~~ Get local unique mask
         if self.cfg.verbose: log.info('[RANK %d]: Loading local unique mask' %(RANK))
-        #local_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
+        #local_unique_mask = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
         local_unique_mask = self.load_data(path_to_unique_local,dtype=np.int32,extension='.bin')
-        #if RANK==0: log.info(f'local_unique_mask: {local_unique_mask.shape} , {local_unique_mask_ref.shape}')
-        #assert np.allclose(local_unique_mask,local_unique_mask_ref)
 
         # ~~~~ Get halo unique mask
         halo_unique_mask = np.array([])
         if SIZE > 1:
-            #halo_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
+            #halo_unique_mask = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
             halo_unique_mask = self.load_data(path_to_unique_halo,dtype=np.int32,extension='.bin')
-            #if RANK==0: log.info(f'halo_unique_mask: {halo_unique_mask.shape} , {halo_unique_mask_ref.shape}')
-            #assert np.allclose(halo_unique_mask,halo_unique_mask_ref)
 
         # ~~~~ Make the full graph: 
         if self.cfg.verbose: log.info('[RANK %d]: Making the FULL GLL-based graph with overlapping nodes' %(RANK))
@@ -784,7 +774,6 @@ class Trainer:
         if self.cfg.verbose: log.info('[RANK %d]: Getting idx_reduced2full' %(RANK))
         idx_reduced2full = gcon.get_upsample_indices(data_full, data_reduced, idx_full2reduced)
 
-        if RANK == 0: log.info('Done')
         return data_reduced, data_full, idx_full2reduced, idx_reduced2full
 
     def setup_halo(self):
@@ -815,17 +804,9 @@ class Trainer:
         return 
 
     def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
-        #if n_colms==3:
-        #    data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
-        #else:
-        #    data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_p_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
+        #data_x = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
         data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
-        #if RANK==0: 
-        #    log.info(f'data_x: {data_x.shape} , {data_x_ref.shape}')
-        #    log.info(f'{data_x[:4]}')
-        #    log.info(f'{data_x_ref[:4]}')
-        #assert np.allclose(data_x,data_x_ref)
          
         # Retain only N_gll = Np*Ne elements
         N_gll = self.data_full.pos.shape[0]
@@ -1096,7 +1077,6 @@ class Trainer:
         # Create training dataset -- only 1 snapshot for demo
         data_graph = Data()
         for key in reduced_graph_dict.keys():
-            print(key,flush=True)
             data_graph[key] = reduced_graph_dict[key]
         if self.cfg.consistency:
             data_graph.pos = torch.cat((data_graph.pos, pos_halo), dim=0)
@@ -1526,10 +1506,10 @@ def main(cfg: DictConfig) -> None:
         log.info(f'Hello from rank {RANK}/{SIZE}, local rank {LOCAL_RANK}, on device {DEVICE}:{DEVICE_ID} out of {N_DEVICES}.')
     
     if RANK == 0:
-        print('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
-        print('RUNNING WITH INPUTS:')
-        print(OmegaConf.to_yaml(cfg)) 
-        print('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~', flush=True)
+        log.info('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
+        log.info('RUNNING WITH INPUTS:')
+        log.info(f'{OmegaConf.to_yaml(cfg)}') 
+        log.info('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~', flush=True)
 
     if not cfg.online:
         train(cfg)
@@ -1540,6 +1520,10 @@ def main(cfg: DictConfig) -> None:
         train(cfg, client)
     
     cleanup()
+
+    if RANK == 0:
+        log.info('Exiting ...')
+
 
 if __name__ == '__main__':
     main()

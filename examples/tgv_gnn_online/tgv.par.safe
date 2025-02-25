@@ -6,7 +6,7 @@ polynomialOrder = 3
 #stopAt = numSteps
 #numSteps = 0
 stopAt = endTime
-endTime = 50
+endTime = 1000
 
 timeStepper = tombo3
 dt = 3e-3

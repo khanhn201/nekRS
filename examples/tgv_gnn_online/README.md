@@ -1,15 +1,14 @@
-# Offline training of a time independent GNN surrogate model
+# Online training of a time independent GNN surrogate model
 
-This example demonstrates how the `gnn` plugin can be used to create a distributed graph from the nekRS mesh and train a GNN from a series of saved solution fields.
+This example demonstrates how the `gnn` and the `smartRedis` plugins can be used to create a distributed graph from the nekRS mesh and online train a GNN from a series of solution fields.
 It is based off of the [Taylor-Green-Vortex flow](../tgv/README.md), however on a slightly smaller mesh. 
 In this example, the model takes as inputs the three components of velocity and learns to predict the pressure field at every graph (mesh) node.
 It is a time independent modeling task, since no information regarding the time dependency of the solution stepshots is given to the GNN.
 
-Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh, followed by calls to `graph->gnnSetup();` and `graph->gnnWrite();` to setup and write the GNN input files to disk, respectively. 
-The files are written in a directory called `./gnn_outputs_poly_3`, where the `3` marks the fact that 3rd order polynomials are used in this case.
-In `UDF_ExecuteStep()`, the `writeToFileBinaryF()` routine is called to write the velocity and pressure fields to disk. 
-These files are tagged with the time stamp, rank ID, and job size, and are also located in `./gnn_outputs_poly_3`.
-For simplicity and reproducibility, nekRS is set up to run for a single time step, thus only printing the velocity and pressure for the initial condition, but `UDF_ExecuteStep()` can be changed to print as many time steps as desired.
+Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh, followed by calls to `graph->gnnSetup();` and `graph->gnnWriteDB();` to setup and write the GNN input files to the SmartSim database, respectively. 
+In `UDF_ExecuteStep()`, the `writeToFileBinaryF()` routine is called to send the velocity and pressure fields to the database as well using the [DataSet](https://www.craylabs.org/docs/sr_data_structures.html#dataset) data structure. 
+These keys-value pairs for the training data are tagged with the time stamp, rank ID, and job size.
+For simplicity and reproducibility, nekRS is set up to send training data only at the first time step, thus only using the velocity and pressure for the initial condition to train the model, but `UDF_ExecuteStep()` can be changed to send as many time steps as desired.
 
 ## Building nekRS
 
@@ -18,7 +17,7 @@ To build nekRS with the GNN plugin, simply execute the build script [BuildMeOnAu
 source BuildMeOnAurora
 ```
 
-NOTE: you can disable building SmartRedis for this example since it is performing offline training from files saved to disk.
+NOTE: you must enable building SmartRedis for this example since it is performing online training with the SmartRedis backend. 
 
 ## Runnig the example
 

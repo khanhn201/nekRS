@@ -1,10 +1,14 @@
 import os
+import sys
 from typing import Optional, Union
 from omegaconf import DictConfig
 import numpy as np
-from time import sleep
+from time import sleep, perf_counter
 
-from smartredis import Client, Dataset
+try:
+    from smartredis import Client, Dataset
+except:
+    pass
 
 class OnlineClient:
     """Class for the online training client
@@ -36,9 +40,18 @@ class OnlineClient:
     def get_array(self, file_name: Union[str, Dataset]) -> np.ndarray:
         """Get an array frpm staging area / simulation
         """
+        tic = perf_counter()
         if self.backend == "smartredis":
             if isinstance(file_name, str):
-                array = self.client.get_tensor(file_name)
+                while True:
+                    if self.file_exists(file_name):
+                        array = self.client.get_tensor(file_name)
+                        break
+                    else:
+                        sleep(0.5)
+                        t_elapsed = perf_counter() - tic
+                        if t_elapsed > 300:
+                            sys.exit(f'Could not find {file_name} in DB')
             else:
                 array = file_name.get_tensor('data')
         return array

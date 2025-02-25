@@ -193,34 +193,32 @@ void gnn_t::gnnWriteDB(smartredis_client_t* client)
     std::string nranks = "_size_" + std::to_string(size);
 
     // Writing the graph data
-    client->_client->put_tensor("pos_node" + irank + nranks, pos_node, {num_nodes,3},
+    client->_client->put_tensor("pos_node" + irank + nranks, pos_node, {3,num_nodes},
                     SRTensorTypeDouble, SRMemLayoutContiguous);
-    client->_client->put_tensor("node_element_ids" + irank + nranks, node_element_ids, {num_nodes,1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
-    client->_client->put_tensor("local_unique_mask" + irank + nranks, local_unique_mask, {num_nodes,1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
-    client->_client->put_tensor("halo_unique_mask" + irank + nranks, halo_unique_mask, {num_nodes,1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
+    //client->_client->put_tensor("node_element_ids" + irank + nranks, node_element_ids, {num_nodes,1},
+    //                SRTensorTypeInt32, SRMemLayoutContiguous);
+    client->_client->put_tensor("local_unique_mask" + irank + nranks, local_unique_mask, {num_nodes},
+                    SRTensorTypeInt32, SRMemLayoutContiguous);
+    client->_client->put_tensor("halo_unique_mask" + irank + nranks, halo_unique_mask, {num_nodes},
+                    SRTensorTypeInt32, SRMemLayoutContiguous);
     client->_client->put_tensor("global_ids" + irank + nranks, mesh->globalIds, {num_nodes,1},
                     SRTensorTypeInt64, SRMemLayoutContiguous);
     
     // Writing edge information
-    client->_client->put_tensor("edge_index" + irank + nranks, edge_index, {num_edg,2},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
-    client->_client->put_tensor("edge_index_element_local" + irank + nranks, edge_index_local, {num_edg_l,2},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
-    client->_client->put_tensor("edge_index_element_local_vertex" + irank + nranks, edge_index_local_vertex, {num_vert_l,2},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
+    client->_client->put_tensor("edge_index" + irank + nranks, edge_index, {2,num_edg},
+                    SRTensorTypeInt32, SRMemLayoutContiguous);
+    //client->_client->put_tensor("edge_index_element_local" + irank + nranks, edge_index_local, {2,num_edg_l},
+    //                SRTensorTypeInt32, SRMcemLayoutContiguous);
+    //client->_client->put_tensor("edge_index_element_local_vertex" + irank + nranks, edge_index_local_vertex, {2,num_vert_l},
+    //                SRTensorTypeInt32, SRMemLayoutContiguous);
 
     // Writing some graph statistics
-    if (rank % client->_num_db_tensors == 0) {
-        client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
-                        SRTensorTypeInt64, SRMemLayoutContiguous);
-        client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
-                        SRTensorTypeInt64, SRMemLayoutContiguous);
-        client->_client->put_tensor("N" + irank + nranks, &N, {1},
-                        SRTensorTypeInt64, SRMemLayoutContiguous);
-    }
+    client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
+                    SRTensorTypeInt64, SRMemLayoutContiguous);
+    client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
+                    SRTensorTypeInt64, SRMemLayoutContiguous);
+    client->_client->put_tensor("N" + irank + nranks, &N, {1},
+                    SRTensorTypeInt64, SRMemLayoutContiguous);
 
     MPI_Barrier(comm);
     if (verbose) printf("[RANK %d] -- done sending graph data to DB \n", rank);

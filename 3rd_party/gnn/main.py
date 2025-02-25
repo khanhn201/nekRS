@@ -63,6 +63,10 @@ import gnn
 import graph_connectivity as gcon
 
 # Online client
+try:
+    from smartredis import Dataset
+except:
+    pass
 from client import OnlineClient
 
 log = logging.getLogger(__name__)
@@ -295,21 +299,25 @@ class Trainer:
         # ~~~~ Init torch stuff 
         self.setup_torch()
 
-        # ~~~~ If online, wait for graph data to be populated
-        if self.cfg.online:
-            if RANK == 0: log.info('Waiting for graph data from simulation ...')
-            while True:
-                if (self.client.file_exists('N')):
-                    time.sleep(0.5)
-                    break
-            COMM.Barrier()
-            if RANK == 0: log.info('Graph data available from simulation')
+        ## ~~~~ If online, wait for graph data to be populated
+        #if self.cfg.online:
+        #    if RANK == 0: log.info('Waiting for graph data from simulation ...')
+        #    while True:
+        #        if (self.client.file_exists(f'N_rank_{RANK}_size_{SIZE}')):
+        #            time.sleep(0.5)
+        #            break
+        #    COMM.Barrier()
+        #    if RANK == 0: log.info('Graph data available from simulation')
 
         # ~~~~ Setup local graph 
         self.data_reduced, \
             self.data_full, \
             self.idx_full2reduced, \
             self.idx_reduced2full = self.setup_local_graph()
+        
+        # ~~~~ Get local nodes
+        n_nodes_local = self.data_reduced.pos.shape[0]
+        self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
         
         # ~~~~ Setup data 
         self.data = self.setup_data()
@@ -679,7 +687,7 @@ class Trainer:
         dist.gather(input_tensor, gather_list, dst=0)
         return gather_list
 
-    def load_data(self, file_name: str, 
+    def load_data(self, file_name: Union[str, Dataset], 
                   dtype: Optional[type] = np.float64, 
                   extension: Optional[str] = ""
     ):
@@ -695,13 +703,19 @@ class Trainer:
             else:
                 data = np.loadtxt(file_name, dtype=dtype)
         else:
-            data = self.client.get_array(file_name)
+            data = self.client.get_array(file_name).astype(dtype)
+            if isinstance(file_name, str):
+                if 'edge_index' not in file_name:
+                    data = data.T
+            else:
+                data = data.T
         return data
 
     def setup_local_graph(self):
         """
         Load in the local graph
         """
+        if RANK == 0: log.info('Setting up the graph ...')
         if not self.cfg.online:
             main_path = self.cfg.gnn_outputs_path + '/'
         else:
@@ -715,9 +729,11 @@ class Trainer:
         
         # ~~~~ Get positions and global node index
         if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
-        #pos = np.fromfile(path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
+        pos_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
         pos = self.load_data(path_to_pos_full, extension='.bin').reshape((-1,3))
         pos = pos.astype(NP_FLOAT_DTYPE)
+        if RANK==0: log.info(f'pos: {pos.shape} , {pos_ref.shape}')
+        assert np.allclose(pos,pos_ref)
 
         pos_orig = np.copy(pos)
 
@@ -725,25 +741,35 @@ class Trainer:
         L_z = 2. 
         # pos[:,2] = np.cos(2.*np.pi*pos[:,2]/L_z) # cosine
         pos[:,2] = np.abs((pos[:,2] % L_z) - L_z / 2) # piecewise linear 
-        #gli = np.fromfile(path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
+        gli_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
         gli = self.load_data(path_to_glob_ids,dtype=np.int64,extension='.bin').reshape((-1,1))
+        if RANK==0: log.info(f'gli: {gli.shape} , {gli_ref.shape}')
+        assert np.allclose(gli,gli_ref)
 
         # ~~~~ Get edge index
         if self.cfg.verbose: log.info('[RANK %d]: Loading edge index' %(RANK))
-        #ei = np.fromfile(path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
-        ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin').reshape((-1,2)).T
+        ei_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
+        ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin') 
+        if not self.cfg.online:
+            ei = ei.reshape((-1,2)).T
         ei = ei.astype(np.int64) # sb: int64 for edge_index 
+        if RANK==0: log.info(f'ei: {ei.shape} , {ei_ref.shape}')
+        assert np.allclose(ei,ei_ref)
         
         # ~~~~ Get local unique mask
         if self.cfg.verbose: log.info('[RANK %d]: Loading local unique mask' %(RANK))
-        #local_unique_mask = np.fromfile(path_to_unique_local + ".bin", dtype=np.int32)
+        local_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
         local_unique_mask = self.load_data(path_to_unique_local,dtype=np.int32,extension='.bin')
+        if RANK==0: log.info(f'local_unique_mask: {local_unique_mask.shape} , {local_unique_mask_ref.shape}')
+        assert np.allclose(local_unique_mask,local_unique_mask_ref)
 
         # ~~~~ Get halo unique mask
         halo_unique_mask = np.array([])
         if SIZE > 1:
-            #halo_unique_mask = np.fromfile(path_to_unique_halo + ".bin", dtype=np.int32)
+            halo_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
             halo_unique_mask = self.load_data(path_to_unique_halo,dtype=np.int32,extension='.bin')
+            if RANK==0: log.info(f'halo_unique_mask: {halo_unique_mask.shape} , {halo_unique_mask_ref.shape}')
+            assert np.allclose(halo_unique_mask,halo_unique_mask_ref)
 
         # ~~~~ Make the full graph: 
         if self.cfg.verbose: log.info('[RANK %d]: Making the FULL GLL-based graph with overlapping nodes' %(RANK))
@@ -762,6 +788,7 @@ class Trainer:
         if self.cfg.verbose: log.info('[RANK %d]: Getting idx_reduced2full' %(RANK))
         idx_reduced2full = gcon.get_upsample_indices(data_full, data_reduced, idx_full2reduced)
 
+        if RANK == 0: log.info('Done')
         return data_reduced, data_full, idx_full2reduced, idx_reduced2full
 
     def setup_halo(self):
@@ -774,27 +801,35 @@ class Trainer:
             halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
             # Get list of neighboring processors for each processor
             self.neighboring_procs = np.unique(halo_info[:,3])
-            n_nodes_local = self.data_reduced.pos.shape[0]
+            #n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = halo_info.shape[0]
             if self.cfg.verbose: log.info(f'[RANK {RANK}]: Found {len(self.neighboring_procs)} neighboring processes: {self.neighboring_procs}')
         else:
             #print('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
             halo_info = torch.Tensor([])
-            n_nodes_local = self.data_reduced.pos.shape[0]
+            #n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = 0
 
         #if self.cfg.verbose: log.info('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
 
-        self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
+        #self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
         self.data_reduced.n_nodes_halo = torch.tensor(n_nodes_halo, dtype=torch.int64)
         self.data_reduced.halo_info = halo_info
 
         return 
 
     def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
-        #data_x = np.fromfile(path_to_snap, dtype=np.float64).reshape((-1,n_colms)) 
+        if n_colms==3:
+            data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
+        else:
+            data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_p_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
         data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
+        if RANK==0: 
+            log.info(f'data_x: {data_x.shape} , {data_x_ref.shape}')
+            log.info(f'{data_x[:4]}')
+            log.info(f'{data_x_ref[:4]}')
+        assert np.allclose(data_x,data_x_ref)
          
         # Retain only N_gll = Np*Ne elements
         N_gll = self.data_full.pos.shape[0]
@@ -802,13 +837,14 @@ class Trainer:
 
         # get data in reduced format 
         data_x_reduced = data_x[self.idx_full2reduced, :] 
+        x = torch.tensor(data_x_reduced)
 
         # Add halo nodes by appending the end of the node arrays
-        n_nodes_halo = self.data_reduced.n_nodes_halo
-        n_features_x = data_x_reduced.shape[1]
-        data_x_halo = torch.zeros((n_nodes_halo, n_features_x), dtype=TORCH_FLOAT_DTYPE)
-        x = torch.tensor(data_x_reduced)
-        x = torch.cat((x, data_x_halo), dim=0)
+        if self.cfg.consistency:
+            n_nodes_halo = self.data_reduced.n_nodes_halo
+            n_features_x = data_x_reduced.shape[1]
+            data_x_halo = torch.zeros((n_nodes_halo, n_features_x), dtype=TORCH_FLOAT_DTYPE)
+            x = torch.cat((x, data_x_halo), dim=0)
         return x
 
     def compute_statistics(self, data_list: list, var: str):
@@ -852,14 +888,15 @@ class Trainer:
         # read files
         if not self.cfg.online:
             file_list = os.listdir(data_dir)
+            input_files = [item for item in file_list \
+                            if (f'fld_{input_field}' in item) and (f'rank_{RANK}' in item)]
+            input_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
+            output_files = [item for item in file_list \
+                            if (f'fld_{output_field}' in item) and (f'rank_{RANK}' in item)]
+            output_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
         else:
-            file_list = self.client.get_file_list('training_data')
-        input_files = [item for item in file_list \
-                    if (f'fld_{input_field}' in item) and (f'rank_{RANK}' in item)]
-        input_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
-        output_files = [item for item in file_list \
-                        if (f'fld_{output_field}' in item) and (f'rank_{RANK}' in item)]
-        output_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
+            input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
+            output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
         assert len(input_files) == len(output_files), \
             'ERROR: found different number of input and output files'
 
@@ -868,13 +905,11 @@ class Trainer:
         data_list = []
         if not self.cfg.online:
             path_prepend = data_dir + '/'
-        else:
-            path_prepend = ''
+            input_files = [path_prepend+input_file for input_file in input_files]
+            output_files = [path_prepend+output_file for output_file in output_files]
         for i in range(len(input_files)):
-            path_x = path_prepend + input_files[i]
-            path_y = path_prepend + output_files[i]
-            data_x = self.prepare_snapshot_data(path_x, 3)
-            data_y = self.prepare_snapshot_data(path_y, 1)
+            data_x = self.prepare_snapshot_data(input_files[i], 3)
+            data_y = self.prepare_snapshot_data(output_files[i], 1)
             data_list.append({'x': data_x, 'y':data_y})
 
         # split into train/validation
@@ -1022,6 +1057,7 @@ class Trainer:
         pos_reduced = self.data_reduced.pos
 
         # Read in edge weights 
+        if self.cfg.consistency:
         path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
         #edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
         edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)

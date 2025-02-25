@@ -377,6 +377,7 @@ install(FILES ${CMAKE_BINARY_DIR}/nekrsSys.hpp DESTINATION include/core)
 install(DIRECTORY src/ DESTINATION include FILES_MATCHING REGEX "\.hpp$|\.h$|\.tpp$")
 install(FILES src/udf/CMakeLists.txt DESTINATION udf)
 install(DIRECTORY src/nekInterface/ DESTINATION nekInterface REGEX "\.hpp$|\.cpp$" EXCLUDE)
+install(DIRECTORY 3rd_party/gnn DESTINATION 3rd_party)
 install(DIRECTORY doc/ DESTINATION doc)
 
 if (ENABLE_SMARTREDIS)

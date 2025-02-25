@@ -186,8 +186,8 @@ void UDF_ExecuteStep(double time, int tstep)
   // Every time step check if ML training says it is time to quit
   int exit_val = client->check_run();
   if (exit_val==0) {
-    delete graph;
     nekrs::setEndTime(-10.0);
     nekrs::forceLastStep();
+    //delete graph; // gives a free() error, so commenting for now, but revisit!
   }
 }

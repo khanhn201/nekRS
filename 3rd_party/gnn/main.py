@@ -1509,7 +1509,7 @@ def main(cfg: DictConfig) -> None:
         log.info('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
         log.info('RUNNING WITH INPUTS:')
         log.info(f'{OmegaConf.to_yaml(cfg)}') 
-        log.info('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~', flush=True)
+        log.info('~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')
 
     if not cfg.online:
         train(cfg)

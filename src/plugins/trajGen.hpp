@@ -14,18 +14,15 @@ public:
     trajGen_t(nrs_t *nrs, int dt_factor_, dfloat time_init_);
     ~trajGen_t(); 
 
+    // public variables
+    std::string writePath;
+    dfloat time_init;
+    int dt_factor;
+    dfloat *previous_step;
+    
     // member functions 
     void trajGenSetup();
     void trajGenWrite(dfloat time, int tstep, const std::string& field_name);
-
-    // where trajectory output files are written
-    std::string writePath;
-    
-    // trajectory initial time 
-    dfloat time_init; 
-
-    // dt write factor (timestep interval as multiple of simulation timestep) 
-    int dt_factor; 
 
 private:
     // nekrs objects 

@@ -78,6 +78,7 @@ gnn_t::gnn_t(nrs_t *nrs_)
     node_element_ids = new dlong[N]();
     local_unique_mask = new dlong[N](); 
     halo_unique_mask = new dlong[N]();
+
     graphNodes = (graphNode_t*) calloc(N, sizeof(graphNode_t)); // full domain
     graphNodes_element = (graphNode_t*) calloc(mesh->Np, sizeof(graphNode_t)); // a single element
 

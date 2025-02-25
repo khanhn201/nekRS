@@ -1484,7 +1484,6 @@ def train(cfg: DictConfig,
     
     # Correctness validation
     if cfg.target_loss != 0:
-        print(cfg.target_loss,loss.item())
         if math.isclose(cfg.target_loss,loss.item(),rel_tol=0.001):
             if RANK==0: print('\n\nSUCCESS! GNN training validated!\n\n')
         else:

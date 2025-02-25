@@ -4,6 +4,9 @@
 #include "nrs.hpp"
 #include "nekInterfaceAdapter.hpp"
 #include <filesystem>
+#ifdef NEKRS_ENABLE_SMARTREDIS
+#include "smartRedis.hpp"
+#endif
 
 void deleteDirectoryContents(const std::filesystem::path& dir);
 
@@ -18,11 +21,21 @@ public:
     std::string writePath;
     dfloat time_init;
     int dt_factor;
-    dfloat *previous_step;
+    bool first_step = true;
+    std::string irank, nranks;
+    dfloat *previous_U;
+    dfloat *previous_P;
+    int previous_tstep;
     
     // member functions 
     void trajGenSetup();
     void trajGenWrite(dfloat time, int tstep, const std::string& field_name);
+#ifdef NEKRS_ENABLE_SMARTREDIS
+    void trajGenWriteDB(smartredis_client_t* client, 
+                        dfloat time, 
+                        int tstep, 
+                        const std::string& field_name);
+#endif
 
 private:
     // nekrs objects 

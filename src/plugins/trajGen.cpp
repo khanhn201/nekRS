@@ -26,8 +26,11 @@ trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, dfloat time_init_)
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
 
+    irank = "_rank_" + std::to_string(rank);
+    nranks = "_size_" + std::to_string(size);
+
     // allocate memory 
-    dlong N = mesh->Nelements * mesh->Np; // total number of nodes
+    //dlong N = mesh->Nelements * mesh->Np; // total number of nodes
 
     if (verbose) printf("\n[RANK %d] -- Finished instantiating trajGen_t object\n", rank);
     if (verbose) printf("[RANK %d] -- The number of elements is %d \n", rank, mesh->Nelements);
@@ -43,8 +46,8 @@ void trajGen_t::trajGenSetup()
     if (verbose) printf("[RANK %d] -- in trajGenSetup() \n", rank);
     if (write)
     {
-        std::string irank = "_rank_" + std::to_string(rank);
-        std::string nranks = "_size_" + std::to_string(size);
+        //std::string irank = "_rank_" + std::to_string(rank);
+        //std::string nranks = "_size_" + std::to_string(size);
         std::filesystem::path currentPath = std::filesystem::current_path();
         currentPath /= "traj";
         writePath = currentPath.string();
@@ -75,7 +78,6 @@ void trajGen_t::trajGenWrite(dfloat time, int tstep, const std::string& field_na
         // ~~~~ Write the data
         if ((tstep%dt_factor)==0)
         {
-            //nek::ocopyToNek(time, tstep);
             dfloat *U = new dfloat[nrs->mesh->dim * nrs->fieldOffset]();
             dfloat *P = new dfloat[nrs->fieldOffset]();
             nrs->o_U.copyTo(U, nrs->mesh->dim * nrs->fieldOffset);
@@ -98,3 +100,47 @@ void trajGen_t::trajGenWrite(dfloat time, int tstep, const std::string& field_na
         }
     }
 }
+
+#ifdef NEKRS_ENABLE_SMARTREDIS
+void trajGen_t::trajGenWriteDB(smartredis_client_t* client, 
+    dfloat time, 
+    int tstep, 
+    const std::string& field_name) 
+{
+    MPI_Comm &comm = platform->comm.mpiComm;
+    unsigned long int num_dim = nrs->mesh->dim;
+    unsigned long int field_offset = nrs->fieldOffset;
+
+
+    // print stuff
+    if (rank == 0) {
+        if (verbose) printf("[TRAJ WRITE] -- In tstep %d, at physical time %g \n", tstep, time);
+    }
+
+    // write data
+    if (field_name == "velocity" || field_name == "all") {
+        dfloat *U = new dfloat[num_dim * field_offset]();
+        nrs->o_U.copyTo(U, num_dim * field_offset);
+        if (first_step) {
+            client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                "inputs" + irank, U, num_dim, field_offset);
+            previous_U = new dfloat[num_dim * field_offset]();
+            std::memcpy(previous_U, U, num_dim * field_offset * sizeof(float));
+            previous_tstep = tstep;
+        } else {
+            client->append_dataset_to_list("u_step_" + std::to_string(previous_tstep), "data",
+                "outputs" + irank, previous_U, num_dim, field_offset);
+            client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                "output" + irank, U, num_dim, field_offset);
+
+        }
+    }
+    if (field_name == "pressure" || field_name == "all") {
+        dfloat *P = new dfloat[field_offset]();
+        nrs->o_P.copyTo(P, field_offset);
+
+        writeToFileBinaryF(writePath + "/p_step_" + std::to_string(tstep) + ".bin",
+                            P, nrs->fieldOffset, 1);
+    }
+}
+#endif

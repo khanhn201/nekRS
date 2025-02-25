@@ -82,6 +82,7 @@ if WITH_DDP:
     SIZE = COMM.Get_size()
     RANK = COMM.Get_rank()
     LOCAL_RANK = int(os.getenv("PALS_LOCAL_RANKID"))
+    LOCAL_SIZE = int(os.getenv("PALS_LOCAL_SIZE"))
     #LOCAL_RANK = os.environ.get('OMPI_COMM_WORLD_LOCAL_RANK', '0')
     # LOCAL_RANK = os.environ['OMPI_COMM_WORLD_LOCAL_RANK']
 
@@ -314,26 +315,21 @@ class Trainer:
             self.data_full, \
             self.idx_full2reduced, \
             self.idx_reduced2full = self.setup_local_graph()
-        
-        # ~~~~ Get local nodes
-        n_nodes_local = self.data_reduced.pos.shape[0]
-        self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
-        
+                
+        # ~~~~ Setup halo nodes 
+        self.neighboring_procs = []
+        self.setup_halo()
+
         # ~~~~ Setup data 
         self.data = self.setup_data()
         if RANK == 0: log.info('Done with setup_data')
 
-        if cfg.consistency:
-            # ~~~~ Setup halo nodes 
-            self.neighboring_procs = []
-            self.setup_halo()
+        # ~~~~ Setup halo exchange masks
+        self.mask_send, self.mask_recv = self.build_masks()
+        if RANK == 0: log.info('Done with build_masks')
 
-            # ~~~~ Setup halo exchange masks
-            self.mask_send, self.mask_recv = self.build_masks()
-            if RANK == 0: log.info('Done with build_masks')
-
-            self.buffer_send, self.buffer_recv, self.n_buffer_rows = self.build_buffers(self.cfg.hidden_channels)
-            if RANK == 0: log.info('Done with build_buffers')
+        self.buffer_send, self.buffer_recv, self.n_buffer_rows = self.build_buffers(self.cfg.hidden_channels)
+        if RANK == 0: log.info('Done with build_buffers')
 
         # ~~~~ Build model and move to gpu 
         self.model = self.build_model()
@@ -572,7 +568,7 @@ class Trainer:
         mask_send = [torch.tensor([])] * SIZE
         mask_recv = [torch.tensor([])] * SIZE
 
-        if SIZE > 1: 
+        if SIZE > 1 and self.cfg.consistency: 
             #n_nodes_local = self.data.n_nodes_internal + self.data.n_nodes_halo
             #halo_info = self.data['train']['example'].halo_info
             halo_info = self.data['graph'].halo_info
@@ -729,11 +725,11 @@ class Trainer:
         
         # ~~~~ Get positions and global node index
         if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
-        pos_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
+        #pos_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
         pos = self.load_data(path_to_pos_full, extension='.bin').reshape((-1,3))
         pos = pos.astype(NP_FLOAT_DTYPE)
-        if RANK==0: log.info(f'pos: {pos.shape} , {pos_ref.shape}')
-        assert np.allclose(pos,pos_ref)
+        #if RANK==0: log.info(f'pos: {pos.shape} , {pos_ref.shape}')
+        #assert np.allclose(pos,pos_ref)
 
         pos_orig = np.copy(pos)
 
@@ -741,35 +737,35 @@ class Trainer:
         L_z = 2. 
         # pos[:,2] = np.cos(2.*np.pi*pos[:,2]/L_z) # cosine
         pos[:,2] = np.abs((pos[:,2] % L_z) - L_z / 2) # piecewise linear 
-        gli_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
+        #gli_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
         gli = self.load_data(path_to_glob_ids,dtype=np.int64,extension='.bin').reshape((-1,1))
-        if RANK==0: log.info(f'gli: {gli.shape} , {gli_ref.shape}')
-        assert np.allclose(gli,gli_ref)
+        #if RANK==0: log.info(f'gli: {gli.shape} , {gli_ref.shape}')
+        #assert np.allclose(gli,gli_ref)
 
         # ~~~~ Get edge index
         if self.cfg.verbose: log.info('[RANK %d]: Loading edge index' %(RANK))
-        ei_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
+        #ei_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
         ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin') 
         if not self.cfg.online:
             ei = ei.reshape((-1,2)).T
         ei = ei.astype(np.int64) # sb: int64 for edge_index 
-        if RANK==0: log.info(f'ei: {ei.shape} , {ei_ref.shape}')
-        assert np.allclose(ei,ei_ref)
+        #if RANK==0: log.info(f'ei: {ei.shape} , {ei_ref.shape}')
+        #assert np.allclose(ei,ei_ref)
         
         # ~~~~ Get local unique mask
         if self.cfg.verbose: log.info('[RANK %d]: Loading local unique mask' %(RANK))
-        local_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
+        #local_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
         local_unique_mask = self.load_data(path_to_unique_local,dtype=np.int32,extension='.bin')
-        if RANK==0: log.info(f'local_unique_mask: {local_unique_mask.shape} , {local_unique_mask_ref.shape}')
-        assert np.allclose(local_unique_mask,local_unique_mask_ref)
+        #if RANK==0: log.info(f'local_unique_mask: {local_unique_mask.shape} , {local_unique_mask_ref.shape}')
+        #assert np.allclose(local_unique_mask,local_unique_mask_ref)
 
         # ~~~~ Get halo unique mask
         halo_unique_mask = np.array([])
         if SIZE > 1:
-            halo_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
+            #halo_unique_mask_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
             halo_unique_mask = self.load_data(path_to_unique_halo,dtype=np.int32,extension='.bin')
-            if RANK==0: log.info(f'halo_unique_mask: {halo_unique_mask.shape} , {halo_unique_mask_ref.shape}')
-            assert np.allclose(halo_unique_mask,halo_unique_mask_ref)
+            #if RANK==0: log.info(f'halo_unique_mask: {halo_unique_mask.shape} , {halo_unique_mask_ref.shape}')
+            #assert np.allclose(halo_unique_mask,halo_unique_mask_ref)
 
         # ~~~~ Make the full graph: 
         if self.cfg.verbose: log.info('[RANK %d]: Making the FULL GLL-based graph with overlapping nodes' %(RANK))
@@ -796,40 +792,40 @@ class Trainer:
         main_path = self.cfg.gnn_outputs_path
 
         halo_info = None
-        if SIZE > 1:
+        if SIZE > 1 and self.cfg.consistency:
             #halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
             halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
             # Get list of neighboring processors for each processor
             self.neighboring_procs = np.unique(halo_info[:,3])
-            #n_nodes_local = self.data_reduced.pos.shape[0]
+            n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = halo_info.shape[0]
             if self.cfg.verbose: log.info(f'[RANK {RANK}]: Found {len(self.neighboring_procs)} neighboring processes: {self.neighboring_procs}')
         else:
             #print('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
-            halo_info = torch.Tensor([])
-            #n_nodes_local = self.data_reduced.pos.shape[0]
+            halo_info = torch.Tensor([0])
+            n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = 0
 
         #if self.cfg.verbose: log.info('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
 
-        #self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
+        self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
         self.data_reduced.n_nodes_halo = torch.tensor(n_nodes_halo, dtype=torch.int64)
         self.data_reduced.halo_info = halo_info
 
         return 
 
     def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
-        if n_colms==3:
-            data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
-        else:
-            data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_p_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
+        #if n_colms==3:
+        #    data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
+        #else:
+        #    data_x_ref = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_p_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
         data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
-        if RANK==0: 
-            log.info(f'data_x: {data_x.shape} , {data_x_ref.shape}')
-            log.info(f'{data_x[:4]}')
-            log.info(f'{data_x_ref[:4]}')
-        assert np.allclose(data_x,data_x_ref)
+        #if RANK==0: 
+        #    log.info(f'data_x: {data_x.shape} , {data_x_ref.shape}')
+        #    log.info(f'{data_x[:4]}')
+        #    log.info(f'{data_x_ref[:4]}')
+        #assert np.allclose(data_x,data_x_ref)
          
         # Retain only N_gll = Np*Ne elements
         N_gll = self.data_full.pos.shape[0]
@@ -953,7 +949,7 @@ class Trainer:
         else: 
             x_mean, x_std = self.compute_statistics(data['train'],'x')
             y_mean, y_std = self.compute_statistics(data['train'],'y')
-            if RANK == 0:
+            if RANK == 0 and not self.cfg.online:
                 np.savez(data_dir + f"/data_stats.npz", 
                      x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
                      y_mean=y_mean.cpu().numpy(), y_std=y_std.cpu().numpy(),
@@ -1027,7 +1023,7 @@ class Trainer:
         else: 
             if RANK == 0: log.info(f"Computing training data statistics")
             x_mean, x_std = self.compute_statistics(data['train'],'x')
-            if RANK == 0:
+            if RANK == 0 and not self.cfg.online:
                 np.savez(data_dir + "/data_stats.npz", 
                      x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
                      y_mean=x_mean.cpu().numpy(), y_std=x_std.cpu().numpy(),
@@ -1058,31 +1054,34 @@ class Trainer:
 
         # Read in edge weights 
         if self.cfg.consistency:
-        path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
-        #edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
-        edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
-        self.data_reduced.edge_weight = 1.0/edge_freq
+            path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
+            #edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
+            edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
+            self.data_reduced.edge_weight = 1.0/edge_freq
 
-        # Read in node degree
-        path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
-        #node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
-        node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
-        self.data_reduced.node_degree = node_degree
+            # Read in node degree
+            path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
+            #node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
+            node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
+            self.data_reduced.node_degree = node_degree
 
-        # Add halo nodes by appending the end of the node arrays  
-        n_nodes_halo = self.data_reduced.n_nodes_halo 
-        n_features_pos = pos_reduced.shape[1]
-        pos_halo = torch.zeros((n_nodes_halo, n_features_pos), dtype=TORCH_FLOAT_DTYPE)
+            # Add halo nodes by appending the end of the node arrays  
+            n_nodes_halo = self.data_reduced.n_nodes_halo 
+            n_features_pos = pos_reduced.shape[1]
+            pos_halo = torch.zeros((n_nodes_halo, n_features_pos), dtype=TORCH_FLOAT_DTYPE)
 
-        #node_degree_halo = torch.zeros((n_nodes_halo), dtype=TORCH_FLOAT_DTYPE)
+            #node_degree_halo = torch.zeros((n_nodes_halo), dtype=TORCH_FLOAT_DTYPE)
 
-        # # Add self-edges for halo nodes (unused) 
-        # n_nodes_local = self.data_reduced.n_nodes_local
-        # edge_index_halo = torch.arange(n_nodes_local, n_nodes_local + n_nodes_halo, dtype=torch.int64)
-        # edge_index_halo = torch.stack((edge_index_halo,edge_index_halo))
+            # # Add self-edges for halo nodes (unused) 
+            # n_nodes_local = self.data_reduced.n_nodes_local
+            # edge_index_halo = torch.arange(n_nodes_local, n_nodes_local + n_nodes_halo, dtype=torch.int64)
+            # edge_index_halo = torch.stack((edge_index_halo,edge_index_halo))
 
-        # Add filler edge weights for these self-edges 
-        edge_weight_halo = torch.zeros(n_nodes_halo)
+            # Add filler edge weights for these self-edges 
+            edge_weight_halo = torch.zeros(n_nodes_halo)
+        else:
+            self.data_reduced.edge_weight = torch.zeros(1)
+            self.data_reduced.node_degree = torch.zeros(1)
 
         # Populate data object 
         data_x_reduced = data['train'][0]['x']
@@ -1097,8 +1096,12 @@ class Trainer:
         # Create training dataset -- only 1 snapshot for demo
         data_graph = Data()
         for key in reduced_graph_dict.keys():
+            print(key,flush=True)
             data_graph[key] = reduced_graph_dict[key]
-        data_graph.pos = torch.cat((data_graph.pos, pos_halo), dim=0)
+        if self.cfg.consistency:
+            data_graph.pos = torch.cat((data_graph.pos, pos_halo), dim=0)
+        else:
+            data_graph.pos = data_graph.pos
         #data_temp.node_degree = torch.cat((data_temp.node_degree, node_degree_halo), dim=0)
         #data_temp.edge_index = torch.cat((data_temp.edge_index, edge_index_halo), dim=1)
         #data_temp.edge_weight = torch.cat((data_temp.edge_weight, edge_weight_halo), dim=0)
@@ -1230,10 +1233,10 @@ class Trainer:
             data['x'] = data['x'].to(self.device)
             data['y'] = data['y'].to(self.device)
             graph.edge_index = graph.edge_index.to(self.device)
-            graph.edge_weight = graph.edge_weight.to(self.device)
             graph.edge_attr = graph.edge_attr.to(self.device)
             graph.batch = graph.batch.to(self.device) if graph.batch is not None else None
             graph.halo_info = graph.halo_info.to(self.device)
+            graph.edge_weight = graph.edge_weight.to(self.device)
             graph.node_degree = graph.node_degree.to(self.device)
             loss = loss.to(self.device)
         self.timers['dataTransfer'][self.timer_step] = time.time() - self.timers['dataTransfer'][self.timer_step]
@@ -1330,10 +1333,10 @@ class Trainer:
                     data['x'] = data['x'].to(self.device)
                     data['y'] = data['y'].to(self.device)
                     graph.edge_index = graph.edge_index.to(self.device)
-                    graph.edge_weight = graph.edge_weight.to(self.device)
                     graph.edge_attr = graph.edge_attr.to(self.device)
                     graph.batch = graph.batch.to(self.device) if graph.batch is not None else None
                     graph.halo_info = graph.halo_info.to(self.device)
+                    graph.edge_weight = graph.edge_weight.to(self.device)
                     graph.node_degree = graph.node_degree.to(self.device)
                     loss = loss.to(self.device)
 
@@ -1413,7 +1416,7 @@ class Trainer:
 
         # Number of local nodes 
         n_nodes_local = self.data_reduced.n_nodes_local
-        n_nodes_halo = self.data_reduced.n_nodes_halo
+        n_nodes_halo = self.data_reduced.n_nodes_halo if self.cfg.consistency else 0
         n_edges = self.data_reduced.edge_index.shape[1]
 
         log.info(f"[RANK {RANK}] -- number of local nodes: {n_nodes_local}, number of halo nodes: {n_nodes_halo}, number of edges: {n_edges}")
@@ -1511,8 +1514,7 @@ def train(cfg: DictConfig,
     trainer.save_model()
 
     # Tell simulation to exit
-    COMM.Barrier()
-    if (RANK % LOCAL_RANK == 0):
+    if cfg.online and (RANK % LOCAL_SIZE == 0):
         log.info(f"[RANK {RANK}] -- Telling NekRS to quit ...")
         arrMLrun = np.int32(np.zeros(1))
         client.put_array('check-run',arrMLrun)

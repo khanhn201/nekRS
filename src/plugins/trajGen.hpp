@@ -4,6 +4,9 @@
 #include "nrs.hpp"
 #include "nekInterfaceAdapter.hpp"
 #include <filesystem>
+#ifdef NEKRS_ENABLE_SMARTREDIS
+#include "smartRedis.hpp"
+#endif
 
 void deleteDirectoryContents(const std::filesystem::path& dir);
 
@@ -11,21 +14,29 @@ void deleteDirectoryContents(const std::filesystem::path& dir);
 class trajGen_t 
 {
 public:
-    trajGen_t(nrs_t *nrs, int dt_factor_, dfloat time_init_);
+    trajGen_t(nrs_t *nrs, int dt_factor_, int skip_, dfloat time_init_);
     ~trajGen_t(); 
 
+    // public variables
+    std::string writePath;
+    dfloat time_init;
+    int dt_factor;
+    int skip;
+    bool first_step = true;
+    std::string irank, nranks;
+    //dfloat *previous_U;
+    //dfloat *previous_P;
+    //int previous_tstep;
+    
     // member functions 
     void trajGenSetup();
     void trajGenWrite(dfloat time, int tstep, const std::string& field_name);
-
-    // where trajectory output files are written
-    std::string writePath;
-    
-    // trajectory initial time 
-    dfloat time_init; 
-
-    // dt write factor (timestep interval as multiple of simulation timestep) 
-    int dt_factor; 
+#ifdef NEKRS_ENABLE_SMARTREDIS
+    void trajGenWriteDB(smartredis_client_t* client, 
+                        dfloat time, 
+                        int tstep, 
+                        const std::string& field_name);
+#endif
 
 private:
     // nekrs objects 

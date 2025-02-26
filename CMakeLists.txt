@@ -377,7 +377,19 @@ install(FILES ${CMAKE_BINARY_DIR}/nekrsSys.hpp DESTINATION include/core)
 install(DIRECTORY src/ DESTINATION include FILES_MATCHING REGEX "\.hpp$|\.h$|\.tpp$")
 install(FILES src/udf/CMakeLists.txt DESTINATION udf)
 install(DIRECTORY src/nekInterface/ DESTINATION nekInterface REGEX "\.hpp$|\.cpp$" EXCLUDE)
+install(DIRECTORY 3rd_party/gnn DESTINATION 3rd_party)
 install(DIRECTORY doc/ DESTINATION doc)
+
+if (ENABLE_SMARTREDIS)
+  file(GLOB SMARTREDIS_HEADERS
+    "${SMARTREDIS_INSTALL_DIR}/include/*.h"
+    "${SMARTREDIS_INSTALL_DIR}/include/*.hpp"
+    "${SMARTREDIS_INSTALL_DIR}/include/*.tcc"
+  )
+  install(FILES ${SMARTREDIS_HEADERS} DESTINATION include/plugins)
+  install(DIRECTORY ${SMARTREDIS_INSTALL_DIR}/include/hiredis DESTINATION include/plugins FILES_MATCHING REGEX "\.hpp$|\.h$|\.tpp$")
+  install(DIRECTORY ${SMARTREDIS_INSTALL_DIR}/include/sw DESTINATION include/plugins FILES_MATCHING REGEX "\.hpp$|\.h$|\.tpp$")
+  endif()
 
 install(DIRECTORY scripts/ DESTINATION bin
   FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)

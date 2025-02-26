@@ -4,11 +4,6 @@
 #include "gnn.hpp"
 
 
-void gnn_t::get_edge_index()
-{
-    if (verbose) printf("[RANK %d] -- in get_edge_index() \n", rank);
-}
-
 // NOTE: this assumes graphNodes is already populated. 
 // Call this right after get_graph_nodes() if element-local connectivity is needed.  
 void gnn_t::get_graph_nodes_element()
@@ -76,18 +71,6 @@ void gnn_t::add_p1_neighbors()
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 void gnn_t::get_graph_nodes()
 {

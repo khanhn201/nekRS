@@ -4,7 +4,7 @@ timers: False
 postprocess: False
 seed: 12
 backend: nccl
-num_threads: 0
+num_threads: 1
 logfreq: 10
 ckptfreq: 500
 batch_size: 1
@@ -15,7 +15,8 @@ master_addr: none
 master_port: none
 
 # Modeling task
-model_task: "time independent" # {time independent, time dependent}
+model_task: "time_independent" # {time_independent, time_dependent}
+consistency: True
 use_residual: False
 
 # learning rate schedule 
@@ -36,8 +37,22 @@ rollout_steps: 1
 # Halo swap mode 
 halo_swap_mode : none
 
+# Correctness validation
+target_loss: 0
+
 # plotting the connecivity (can take some time)
 plot_connectivity : False
+
+# specify path to gnn_outputs here (case directory)  
+gnn_outputs_path: ${work_dir}/gnn_outputs_poly_7/
+traj_data_path: ${work_dir}/traj_poly_1/
+
+# Online training
+online: False
+client: 
+    backend: "smartredis"
+    db_nodes: 1
+
 
 hydra:
   job:
@@ -63,7 +78,3 @@ profile_dir: ${work_dir}/outputs/profiles/new_timers/
 # path to save inference results 
 inference_dir: ${work_dir}/outputs/inference/
 
-
-# specify path to gnn_outputs here (case directory)  
-gnn_outputs_path: ${work_dir}/gnn_outputs_poly_7/
-traj_data_path: ${work_dir}/traj_poly_1/

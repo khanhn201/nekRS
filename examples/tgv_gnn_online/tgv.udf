@@ -1,5 +1,6 @@
+#include "nekrs.hpp"
+#include "smartRedis.hpp"
 #include "gnn.hpp"
-#include "trajGen.hpp"
 
 deviceMemory<dfloat> o_qcriterion;
 
@@ -16,8 +17,8 @@ magSqr(const dlong Ntotal, const dlong offset, @ restrict const dfloat *U, @ res
 
 #endif
 
+smartredis_client_t* client = nullptr;
 gnn_t* graph = nullptr;
-trajGen_t* tgen = nullptr;
 
 void printDiagnostics(nrs_t *nrs, double time, int tstep)
 {
@@ -101,10 +102,14 @@ void UDF_Setup0(MPI_Comm comm, setupAide &options)
 
 void UDF_Setup()
 {
+  // Initialize SmartRedis client
+  client = new smartredis_client_t(nrs);
+  client->init_check_run();
+
   // gnn plugin
   graph = new gnn_t(nrs);
   graph->gnnSetup();
-  graph->gnnWrite();
+  graph->gnnWriteDB(client);
 
   auto mesh = nrs->mesh;
 
@@ -127,32 +132,53 @@ void UDF_Setup()
 
   o_qcriterion.resize(mesh->Nlocal);
   nrs->addUserCheckpointField("scalar00", std::vector<deviceMemory<dfloat>>{o_qcriterion});
-
-  // trajectory generation plugin
-  int dt_factor = 10;
-  int skip = 0;
-  dfloat t0;
-  platform->options.getArgs("START TIME", t0);
-  tgen = new trajGen_t (nrs, dt_factor, skip, t0);
-  tgen->trajGenSetup();
 }
 
 void UDF_ExecuteStep(double time, int tstep)
 {
   printDiagnostics(nrs, time, tstep);
 
-  int numSteps = -1;
-  platform->options.getArgs("NUMBER TIMESTEPS", numSteps);
+  if (tstep == 0) {
+    dfloat *U = new dfloat[nrs->mesh->dim * nrs->fieldOffset]();
+    dfloat *P = new dfloat[nrs->fieldOffset]();
+    nrs->o_U.copyTo(U, nrs->mesh->dim * nrs->fieldOffset);
+    nrs->o_P.copyTo(P, nrs->fieldOffset);
 
-  // write trajectory
-  tgen->trajGenWrite(time, tstep, "velocity");
+    // Get string of the current time, rounded to first decimal place
+    dfloat time_rounded = std::round(time * 10.0) / 10.0;
+    std::ostringstream outStream;
+    outStream << std::fixed << std::setprecision(1) << time_rounded;
+    std::string time_rounded_string = outStream.str();
+
+    // Write flowfield
+    int rank, size;
+    MPI_Comm_rank(platform->comm.mpiComm, &rank);
+    MPI_Comm_size(platform->comm.mpiComm, &size);
+    std::string irank = "_rank_" + std::to_string(rank);
+    std::string nranks = "_size_" + std::to_string(size);
+    unsigned long int field_offset = nrs->fieldOffset;
+    client->append_dataset_to_list("fld_u_time_" + time_rounded_string + irank + nranks, "data",
+                                   "inputs" + irank, U, 3, field_offset);
+    client->append_dataset_to_list("fld_p_time_" + time_rounded_string + irank + nranks, "data",
+                                   "outputs" + irank, P, field_offset, 1);
+    MPI_Barrier(platform->comm.mpiComm);
+    if (rank == 0)
+      std::cout << "All ranks finished sending training data" << std::endl;
+    client->put_step_num(tstep);
+  }
 
   if (nrs->checkpointStep) {
     nrs->Qcriterion(o_qcriterion);
   }
 
+  // Every time step check if ML training says it is time to quit
+  int exit_val = client->check_run();
+  if (exit_val==0) {
+    nekrs::setEndTime(-10.0);
+    nekrs::forceLastStep();
+  }
+
   if (nrs->lastStep || numSteps == 0) {
     delete graph;
-    delete tgen;
   }
 }

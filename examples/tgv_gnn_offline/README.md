@@ -9,7 +9,7 @@ Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh,
 The files are written in a directory called `./gnn_outputs_poly_3`, where the `3` marks the fact that 3rd order polynomials are used in this case.
 In `UDF_ExecuteStep()`, the `writeToFileBinaryF()` routine is called to write the velocity and pressure fields to disk. 
 These files are tagged with the time stamp, rank ID, and job size, and are also located in `./gnn_outputs_poly_3`.
-For simplicity, nekRS is set up to run for a single time step, thus only printing the velocity and pressure for the initial condition, but `UDF_ExecuteStep()` can be changed to print as many time steps as desired.
+For simplicity and reproducibility, nekRS is set up to run for a single time step, thus only printing the velocity and pressure for the initial condition, but `UDF_ExecuteStep()` can be changed to print as many time steps as desired.
 
 ## Building nekRS
 

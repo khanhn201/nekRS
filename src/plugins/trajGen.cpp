@@ -14,11 +14,12 @@ void deleteDirectoryContents(const std::filesystem::path& dir)
 }
 
 
-trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, dfloat time_init_)
+trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, int skip_, dfloat time_init_)
 {
     nrs = nrs_; // set nekrs object
     mesh = nrs->mesh; // set mesh object
     dt_factor = dt_factor_; 
+    skip = skip_;
     time_init = time_init_; 
 
     // set MPI rank and size 
@@ -26,8 +27,11 @@ trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, dfloat time_init_)
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &size);
 
+    irank = "_rank_" + std::to_string(rank);
+    nranks = "_size_" + std::to_string(size);
+
     // allocate memory 
-    dlong N = mesh->Nelements * mesh->Np; // total number of nodes
+    //dlong N = mesh->Nelements * mesh->Np; // total number of nodes
 
     if (verbose) printf("\n[RANK %d] -- Finished instantiating trajGen_t object\n", rank);
     if (verbose) printf("[RANK %d] -- The number of elements is %d \n", rank, mesh->Nelements);
@@ -43,8 +47,8 @@ void trajGen_t::trajGenSetup()
     if (verbose) printf("[RANK %d] -- in trajGenSetup() \n", rank);
     if (write)
     {
-        std::string irank = "_rank_" + std::to_string(rank);
-        std::string nranks = "_size_" + std::to_string(size);
+        //std::string irank = "_rank_" + std::to_string(rank);
+        //std::string nranks = "_size_" + std::to_string(size);
         std::filesystem::path currentPath = std::filesystem::current_path();
         currentPath /= "traj";
         writePath = currentPath.string();
@@ -75,7 +79,6 @@ void trajGen_t::trajGenWrite(dfloat time, int tstep, const std::string& field_na
         // ~~~~ Write the data
         if ((tstep%dt_factor)==0)
         {
-            //nek::ocopyToNek(time, tstep);
             dfloat *U = new dfloat[nrs->mesh->dim * nrs->fieldOffset]();
             dfloat *P = new dfloat[nrs->fieldOffset]();
             nrs->o_U.copyTo(U, nrs->mesh->dim * nrs->fieldOffset);
@@ -98,3 +101,66 @@ void trajGen_t::trajGenWrite(dfloat time, int tstep, const std::string& field_na
         }
     }
 }
+
+#ifdef NEKRS_ENABLE_SMARTREDIS
+void trajGen_t::trajGenWriteDB(smartredis_client_t* client, 
+    dfloat time, 
+    int tstep, 
+    const std::string& field_name) 
+{
+    bool send_data = false;
+    if (skip == 0) {
+        if (tstep % dt_factor == 0) {
+            send_data = true;
+        }
+    } else {
+        if ((tstep % skip == 0) or (tstep % (skip+dt_factor) == 0)) {
+            send_data = true;
+        }
+    }
+
+    if (send_data) {
+        MPI_Comm &comm = platform->comm.mpiComm;
+        unsigned long int num_dim = nrs->mesh->dim;
+        unsigned long int field_offset = nrs->fieldOffset;
+
+        // print stuff
+        if (rank == 0 and verbose) {
+            printf("[TRAJ WRITE DB] -- Writing data at tstep %d and physical time %g \n", tstep, time);
+        }
+
+        // write data
+        if (field_name == "velocity" || field_name == "all") {
+            dfloat *U = new dfloat[num_dim * field_offset]();
+            nrs->o_U.copyTo(U, num_dim * field_offset);
+            if (first_step) {
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
+                    "inputs" + irank, U, num_dim, field_offset);
+            } else {
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
+                    "outputs" + irank, U, num_dim, field_offset);
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
+                    "inputs" + irank, U, num_dim, field_offset);
+            }
+        }
+        if (field_name == "pressure" || field_name == "all") {
+            dfloat *P = new dfloat[field_offset]();
+            nrs->o_P.copyTo(P, field_offset);
+            if (first_step) {
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
+                    "inputs" + irank, P, num_dim, field_offset);
+            } else {
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
+                    "outputs" + irank, P, 1, field_offset);
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
+                    "inputs" + irank, P, 1, field_offset);
+            }
+        }
+        if (first_step) first_step = false;
+        MPI_Barrier(comm);
+        if (rank == 0 and verbose) {
+            printf("[TRAJ WRITE DB] -- Done writing data to DB\n");
+        }
+    }
+}
+#endif

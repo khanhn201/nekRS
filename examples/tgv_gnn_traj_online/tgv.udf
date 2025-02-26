@@ -1,3 +1,5 @@
+#include "nekrs.hpp"
+#include "smartRedis.hpp"
 #include "gnn.hpp"
 #include "trajGen.hpp"
 
@@ -16,6 +18,7 @@ magSqr(const dlong Ntotal, const dlong offset, @ restrict const dfloat *U, @ res
 
 #endif
 
+smartredis_client_t* client = nullptr;
 gnn_t* graph = nullptr;
 trajGen_t* tgen = nullptr;
 
@@ -101,10 +104,14 @@ void UDF_Setup0(MPI_Comm comm, setupAide &options)
 
 void UDF_Setup()
 {
+  // Initialize SmartRedis client
+  client = new smartredis_client_t(nrs);
+  client->init_check_run();
+
   // gnn plugin
   graph = new gnn_t(nrs);
   graph->gnnSetup();
-  graph->gnnWrite();
+  graph->gnnWriteDB(client);
 
   auto mesh = nrs->mesh;
 
@@ -134,7 +141,7 @@ void UDF_Setup()
   dfloat t0;
   platform->options.getArgs("START TIME", t0);
   tgen = new trajGen_t (nrs, dt_factor, skip, t0);
-  tgen->trajGenSetup();
+  //tgen->trajGenSetup();
 }
 
 void UDF_ExecuteStep(double time, int tstep)
@@ -145,10 +152,19 @@ void UDF_ExecuteStep(double time, int tstep)
   platform->options.getArgs("NUMBER TIMESTEPS", numSteps);
 
   // write trajectory
-  tgen->trajGenWrite(time, tstep, "velocity");
+  if (tstep <= 50) {
+    tgen->trajGenWriteDB(client, time, tstep, "velocity");
+  }
 
   if (nrs->checkpointStep) {
     nrs->Qcriterion(o_qcriterion);
+  }
+
+  // Every time step check if ML training says it is time to quit
+  int exit_val = client->check_run();
+  if (exit_val==0) {
+    nekrs::setEndTime(-10.0);
+    nekrs::forceLastStep();
   }
 
   if (nrs->lastStep || numSteps == 0) {

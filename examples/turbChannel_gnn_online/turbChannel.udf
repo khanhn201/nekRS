@@ -1,5 +1,7 @@
 #include "smartRedis.hpp"
 #include "nekrs.hpp"
+#include "gnn.hpp"
+#include "trajGen.hpp"
 
 static dfloat ReTau;
 static dfloat zLength;
@@ -10,7 +12,8 @@ static dfloat betaY;
 
 #endif
 
-smartredis_client_t* client = nullptr;
+gnn_t* graph = nullptr;
+trajGen_t* tgen = nullptr;
 
 /* User Functions */
 
@@ -82,22 +85,40 @@ void UDF_Setup0(MPI_Comm comm, setupAide &options)
 
 void UDF_Setup()
 {
+  // Initialize SmartRedis client
+  smartredis::init_client(nrs);
+  smartredis::init_check_run();
+
+  // GNN plugin
+  graph = new gnn_t(nrs);
+  graph->gnnSetup();
+  graph->gnnWrite();
+
+  // Trajectory generation plugin
+  int dt_factor = 10;
+  dfloat t0;
+  platform->options.getArgs("START TIME", t0);
+  tgen = new trajGen_t (nrs, dt_factor, t0);
+  tgen->trajGenSetup();
+
   if (platform->options.compareArgs("CONSTANT FLOW RATE", "FALSE")) {
     nrs->userVelocitySource = &userf;
   }
 
   useric(nrs);
-
-  // Initialize SmartRedis client
-  client = new smartredis_client_t(nrs);
-  client->init_wallModel_train(); // model for the wall shear stress
 }
 
 void UDF_ExecuteStep(double time, int tstep)
 {
-  // Perform inference with wall model
   if (tstep%50==0 && tstep>0) {
-    //postProcessing::strainRate(nrs, false, nrs->cds->o_S);
-    client->run_wallModel(tstep); // model for the wall shear stress
+    // write trajectory
+    tgen->trajGenWrite(time, tstep, "velocity");
+    MPI_Barrier(platform->comm.mpiComm);
+    smartredis::put_step_num(tstep);
+  }
+
+  if (nrs->lastStep || numSteps == 0) {
+    delete graph;
+    delete tgen;
   }
 }

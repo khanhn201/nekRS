@@ -3,8 +3,7 @@ set -a
 
 SYSTEM="aurora"
 DEPLOYMENT="colocated"
-ML_TASK="train"
-NEKRS_HOME="/flare/datascience/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
+NEKRS_HOME="/flare/datascience/balin/Nek/nekRSv24/exe/nekrsv24_onlinegnn_frameworks"
 VENV_PATH=""
 PROJ_ID="datascience"
 QUEUE="debug"
@@ -28,6 +27,7 @@ if [[ -z "$VENV_PATH" && ! -d ./_ssim ]]; then
   smart build -v --device cpu --torch_dir $TORCH_CMAKE_PATH --no_tf
   smart validate
   cd ..
+  pip install torch_geometric==2.5.3
   VENV_PATH=${PWD}/_ssim/bin/activate
 elif [ -d ./_ssim ]; then
   echo -e "\033[35mA Python venv was not specified, but fuond ./_ssim \033[m"
@@ -37,7 +37,6 @@ fi
 echo "Setting up case:"
 echo "    system: ${SYSTEM}"
 echo "    deployment: ${DEPLOYMENT}"
-echo "    ML task: ${ML_TASK}"
 echo
 
 script_name=nrsrun_${SYSTEM}
@@ -47,9 +46,8 @@ if [ ${DEPLOYMENT} == "colocated" ]; then
   PROJ_ID=$PROJ_ID \
   QUEUE=$QUEUE \
   DEPLOYMENT=$DEPLOYMENT \
-  ML_TASK=$ML_TASK \
   VENV_PATH=$VENV_PATH \
-  ./${script_name} turbChannel $NODES 00:30
+  ./${script_name} tgv $NODES 00:30
 elif [ ${DEPLOYMENT} == "clustered" ]; then
   NODES=`cat $PBS_NODEFILE | wc -l`
   echo "Running on $NODES total nodes"
@@ -57,20 +55,15 @@ elif [ ${DEPLOYMENT} == "clustered" ]; then
   read DB_NODES
   echo "simulation nodes"
   read SIM_NODES
-  if [ ${ML_TASK} == "train" ]; then
-    echo "and trainer nodes to use"
-    read TRAIN_NODES
-  else
-    TRAIN_NODES=1
-  fi
+  echo "and trainer nodes to use"
+  read TRAIN_NODES
   NEKRS_HOME=$NEKRS_HOME \
   PROJ_ID=$PROJ_ID \
   QUEUE=$QUEUE \
   DEPLOYMENT=$DEPLOYMENT \
-  ML_TASK=$ML_TASK \
   VENV_PATH=$VENV_PATH \
   DB_NODES=$DB_NODES SIM_NODES=$SIM_NODES TRAIN_NODES=$TRAIN_NODES \
-  ./${script_name} turbChannel $NODES 00:30
+  ./${script_name} tgv $NODES 00:30
 else
   echo Please select between clustered and colocated deployment of the workflow
 fi

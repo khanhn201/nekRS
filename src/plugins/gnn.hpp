@@ -1,8 +1,12 @@
+
 #if !defined(nekrs_gnn_hpp_)
 #define nekrs_gnn_hpp_
 
 #include "nrs.hpp"
 #include "nekInterfaceAdapter.hpp"
+#ifdef NEKRS_ENABLE_SMARTREDIS
+#include "smartRedis.hpp"
+#endif
 
 typedef struct {
     dlong localId; 
@@ -35,37 +39,45 @@ public:
     gnn_t(nrs_t *nrs);
     ~gnn_t(); 
 
-    // member functions 
-    void gnnSetup(bool multiscale=false);
-    void gnnWrite();
-
-    // where gnn output files are written, if "write=True". 
     std::string writePath;
 
+    // member functions 
+    void gnnSetup();
+    void gnnWrite();
+#ifdef NEKRS_ENABLE_SMARTREDIS
+    void gnnWriteDB(smartredis_client_t* client);
+#endif
+
 private:
+    // MPI stuff 
+    int rank;
+    int size;
+
     // nekrs objects 
     nrs_t *nrs;
     mesh_t *mesh;
     ogs_t *ogs;
+
+    // Graph attributes
+    dlong N;
+    hlong num_edges;
+    int num_edges_local;
+    int num_vertices_local;
 
     // allocated in constructor 
     dfloat *pos_node; 
     dlong *node_element_ids;
     dlong *local_unique_mask;
     dlong *halo_unique_mask;
+    dlong *edge_index;
+    dlong *edge_index_local;
+    dlong *edge_index_local_vertex;
 
     // node objects 
     parallelNode_t *localNodes;
     parallelNode_t *haloNodes;
     graphNode_t *graphNodes; 
     graphNode_t *graphNodes_element;
-
-    // MPI stuff 
-    int rank;
-    int size;
-
-    // Graph attributes
-    hlong num_edges; 
 
     // member functions 
     void get_graph_nodes();
@@ -76,6 +88,9 @@ private:
     void get_node_element_ids();
     void get_node_masks();
     void get_edge_index();
+    void get_edge_index_element_local();
+    void get_edge_index_element_local_vertex();
+    
     void write_edge_index(const std::string& filename);
     void write_edge_index_element_local(const std::string& filename);
     void write_edge_index_element_local_vertex(const std::string& filename);
@@ -87,8 +102,9 @@ private:
     // for prints 
     bool verbose = true; 
 
-    // for writing 
-    bool write = true;
+    // model features
+    bool multiscale = false;
 };
 
 #endif
+

@@ -186,6 +186,12 @@ def all_gather_tensor(tensor_list: list[Tensor], tensor_local: Tensor):
         return tensor_list
     return [tensor_local]
 
+def mpi_all_gather(local_obj):
+    if (WITH_DDP):
+        obj_list = COMM.allgather(local_obj)
+        return obj_list
+    return [local_obj]
+
 def trace_handler(p):
     output = p.key_averages().table(sort_by="self_cuda_time", row_limit=20)
     print(output)
@@ -399,13 +405,14 @@ class Trainer:
             self.model = DDP(self.model, broadcast_buffers=False, gradient_as_bucket_view=True)
             if WITH_XPU: self.model.to(self.device)
 
-        # ~~~~ Setup train_step timers 
-        self.timer_step = 0
-        self.timer_step_max = self.total_iterations - self.iteration
-        self.timers = self.setup_timers(self.timer_step_max)
-        self.timers_max = self.setup_timers(self.timer_step_max)
-        self.timers_min = self.setup_timers(self.timer_step_max)
-        self.timers_avg = self.setup_timers(self.timer_step_max)
+        # ~~~~ Setup train_step timers
+        if self.cfg.timers:
+            self.timer_step = 0
+            self.timer_step_max = self.total_iterations - self.iteration
+            self.timers = self.setup_timers(self.timer_step_max)
+            self.timers_max = self.setup_timers(self.timer_step_max)
+            self.timers_min = self.setup_timers(self.timer_step_max)
+            self.timers_avg = self.setup_timers(self.timer_step_max)
 
     def checkpoint(self):
         if RANK == 0:
@@ -817,24 +824,25 @@ class Trainer:
         return x
 
     def compute_statistics(self, data_list: list, var: str):
+        device = 'cpu'
         n_features = data_list[0][var].shape[1]
         n_nodes_local = self.data_reduced.n_nodes_local
         n_snaps = len(data_list)
         x_full = torch.zeros((n_snaps, n_nodes_local, n_features), dtype=TORCH_FLOAT_DTYPE)
         for i in range(len(data_list)):
             x_full[i,:,:] = data_list[i][var][:n_nodes_local, :]
-        data_mean_ = x_full.mean(axis=(0,1)).to(self.device)
-        data_var_ = x_full.var(axis=(0,1)).to(self.device)
-        n_scale_ = torch.tensor([n_nodes_local * n_snaps], dtype=TORCH_FLOAT_DTYPE, device=self.device)
+        data_mean_ = x_full.mean(axis=(0,1)).to(device)
+        data_var_ = x_full.var(axis=(0,1)).to(device)
+        n_scale_ = torch.tensor([n_nodes_local * n_snaps], dtype=TORCH_FLOAT_DTYPE, device=device)
 
-        data_mean_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=self.device) for _ in range(SIZE)]
-        data_mean_gather = all_gather_tensor(data_mean_gather, data_mean_) 
+        data_mean_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=device) for _ in range(SIZE)]
+        data_mean_gather = mpi_all_gather(data_mean_)
 
-        data_var_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=self.device) for _ in range(SIZE)]
-        data_var_gather = all_gather_tensor(data_var_gather, data_var_)
+        data_var_gather = [torch.zeros(n_features, dtype=TORCH_FLOAT_DTYPE, device=device) for _ in range(SIZE)]
+        data_var_gather = mpi_all_gather(data_var_)
 
-        n_scale_gather = [torch.zeros(1, dtype=TORCH_FLOAT_DTYPE, device=self.device) for _ in range(SIZE)]
-        n_scale_gather = all_gather_tensor(n_scale_gather, n_scale_)
+        n_scale_gather = [torch.zeros(1, dtype=TORCH_FLOAT_DTYPE, device=device) for _ in range(SIZE)]
+        n_scale_gather = mpi_all_gather(n_scale_)
 
         data_mean_gather = torch.stack(data_mean_gather)
         data_var_gather = torch.stack(data_var_gather)
@@ -908,23 +916,18 @@ class Trainer:
         stats = {'x': [], 'y': []} 
         if os.path.exists(data_dir + f"/data_stats.npz"):
             if RANK == 0:
-                #stats = np.load(data_dir + f"/data_stats.npz")
-                npzfile = self.load_data(data_dir + f"/data_stats",extension=".npz")
+                npzfile = np.load(data_dir + f"/data_stats.npz")
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)
-            stats['x'] = [torch.tensor(stats['x'][0]).to(self.device), 
-                          torch.tensor(stats['x'][1]).to(self.device)] 
-            stats['y'] = [torch.tensor(stats['y'][0]).to(self.device), 
-                          torch.tensor(stats['y'][1]).to(self.device)] 
             if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
         else: 
             x_mean, x_std = self.compute_statistics(data['train'],'x')
             y_mean, y_std = self.compute_statistics(data['train'],'y')
-            if RANK == 0 and not self.cfg.online:
+            if RANK == 0:
                 np.savez(data_dir + f"/data_stats.npz", 
-                     x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
-                     y_mean=y_mean.cpu().numpy(), y_std=y_std.cpu().numpy(),
+                     x_mean=x_mean, x_std=x_std,
+                     y_mean=y_mean, y_std=y_std,
                 )
             stats['x'] = [x_mean, x_std]
             stats['y'] = [y_mean, y_std]
@@ -993,15 +996,10 @@ class Trainer:
         stats = {'x': [], 'y': []} 
         if os.path.exists(data_dir + "/data_stats.npz"):
             if RANK == 0:
-                #npzfile = np.load(data_dir + "/data_stats.npz")
-                npzfile = self.load_data(data_dir + f"/data_stats",extension=".npz")
+                npzfile = np.load(data_dir + "/data_stats.npz")
                 stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
                 stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
             stats = COMM.bcast(stats, root=0)
-            stats['x'] = [torch.tensor(stats['x'][0]).to(self.device), 
-                          torch.tensor(stats['x'][1]).to(self.device)] 
-            stats['y'] = [torch.tensor(stats['y'][0]).to(self.device), 
-                          torch.tensor(stats['y'][1]).to(self.device)] 
             if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
         else: 
             if RANK == 0: log.info(f"Computing training data statistics")
@@ -1116,11 +1114,24 @@ class Trainer:
         assert self.cfg.batch_size == 1, f"batch_size {self.cfg.batch_size} must be set to 1!"
         assert self.cfg.val_batch_size == 1, f"val_batch_size {self.cfg.batch_size} must be set to 1!"
 
-        train_loader = torch.utils.data.DataLoader(dataset=data['train'], 
+        train_data_scaled = []
+        for item in  data['train']:
+            tdict = {}
+            tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
+            tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+            train_data_scaled.append(tdict)
+        train_loader = torch.utils.data.DataLoader(dataset=train_data_scaled,
                                      batch_size=self.cfg.batch_size,
                                      shuffle=True)
 
-        valid_loader = torch.utils.data.DataLoader(dataset=data['validation'],
+        val_data_scaled = data['validation'].copy()
+        if val_data_scaled[0]:
+            for item in  val_data_scaled:
+                tdict = {}
+                tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
+                tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+                val_data_scaled.append(tdict)
+        valid_loader = torch.utils.data.DataLoader(dataset=val_data_scaled,
                                             batch_size=self.cfg.val_batch_size,
                                             shuffle=False)
 
@@ -1153,7 +1164,11 @@ class Trainer:
         timers['collectives'] = np.zeros(n_record)
         return timers
 
-    def update_timers(self):
+    def update_timer(self, key: str, tstep: int, time: float):
+        self.timers[key][tstep] = time
+        self.synchronize()
+
+    def update_timer_stats(self):
         keys = self.timers.keys()
         i = self.timer_step
         for key in keys:
@@ -1206,11 +1221,17 @@ class Trainer:
                            f"std = {val['std']:>6e} "
             log.info(f"{key} [s] " + stats_string)
 
+    def synchronize(self):
+        if WITH_CUDA:
+            torch.cuda.synchronize()
+        if WITH_XPU:
+            torch.xpu.synchronize()
+
     def train_step(self, data: DataBatch) -> Tensor:
         loss = torch.tensor([0.0])
         graph = self.data['graph']
         stats = self.data['stats']
-        self.timers['dataTransfer'][self.timer_step] = time.time()
+        tic = time.time()
         if WITH_CUDA or WITH_XPU:
             data['x'] = data['x'].to(self.device)
             data['y'] = data['y'].to(self.device)
@@ -1221,12 +1242,12 @@ class Trainer:
             graph.edge_weight = graph.edge_weight.to(self.device)
             graph.node_degree = graph.node_degree.to(self.device)
             loss = loss.to(self.device)
-        self.timers['dataTransfer'][self.timer_step] = time.time() - self.timers['dataTransfer'][self.timer_step]
+        if self.cfg.timers: self.update_timer('dataTransfer', self.timer_step, time.time() - tic)
                 
         self.s_optimizer.zero_grad()
 
-        # re-allocate send buffer
-        self.timers['bufferInit'][self.timer_step] = time.time()
+        # re-allocate send buffer 
+        tic = time.time()
         if self.cfg.halo_swap_mode != 'none':
             for i in range(SIZE):
                 if self.cfg.halo_swap_mode == "all_to_all_opt_intel":
@@ -1238,11 +1259,11 @@ class Trainer:
         else:
             self.buffer_send = None
             self.buffer_recv = None
-        self.timers['bufferInit'][self.timer_step] = time.time() - self.timers['bufferInit'][self.timer_step]
+        if self.cfg.timers: self.update_timer('bufferInit', self.timer_step, time.time() - tic)
         
         # Prediction
-        self.timers['forwardPass'][self.timer_step] = time.time()
-        x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
+        tic = time.time()
+        x_scaled = data['x'][0]
         out_gnn = self.model(x = x_scaled,
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,
@@ -1255,7 +1276,7 @@ class Trainer:
                              neighboring_procs = self.neighboring_procs,
                              SIZE = SIZE,
                              batch = graph.batch)
-        self.timers['forwardPass'][self.timer_step] = time.time() - self.timers['forwardPass'][self.timer_step]
+        if self.cfg.timers: self.update_timer('forwardPass', self.timer_step, time.time() - tic)
 
         if self.cfg.use_residual:
             pred = out_gnn + x_scaled
@@ -1263,8 +1284,8 @@ class Trainer:
             pred = out_gnn
 
         # Accumulate loss
-        self.timers['loss'][self.timer_step] = time.time()
-        target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
+        tic = time.time()
+        target = data['y'][0]
         n_nodes_local = graph.n_nodes_local
         if SIZE == 1 or not self.cfg.consistency:
             loss = self.loss_fn(pred[:n_nodes_local], target[:n_nodes_local])
@@ -1280,20 +1301,21 @@ class Trainer:
             effective_nodes = distnn.all_reduce(effective_nodes_local)
             sum_squared_errors = distnn.all_reduce(sum_squared_errors_local)
             loss = (1.0/(effective_nodes*n_output_features)) * sum_squared_errors
-        self.timers['loss'][self.timer_step] = time.time() - self.timers['loss'][self.timer_step]
+        if self.cfg.timers: self.update_timer('loss', self.timer_step, time.time() - tic)
 
-        self.timers['backwardPass'][self.timer_step] = time.time()
+        tic = time.time()
         loss.backward()
-        self.timers['backwardPass'][self.timer_step] = time.time() - self.timers['backwardPass'][self.timer_step]
+        if self.cfg.timers: self.update_timer('backwardPass', self.timer_step, time.time() - tic)
 
-        self.timers['optimizerStep'][self.timer_step] = time.time()
+        tic = time.time()
         self.s_optimizer.step_and_update_lr()
-        self.timers['optimizerStep'][self.timer_step] = time.time() - self.timers['optimizerStep'][self.timer_step]
+        if self.cfg.timers: self.update_timer('optimizerStep', self.timer_step, time.time() - tic)
 
-        # Update timers 
-        if self.timer_step < self.timer_step_max - 1:
-            self.update_timers()
-            self.timer_step += 1
+        # Update timers
+        if self.cfg.timers:
+            if self.timer_step < self.timer_step_max - 1:
+                self.update_timer_stats()
+                self.timer_step += 1
         return loss 
 
     def test(self) -> dict:
@@ -1324,7 +1346,6 @@ class Trainer:
 
 
                 # re-allocate send buffer
-                self.timers['bufferInit'][self.timer_step] = time.time()
                 if self.cfg.halo_swap_mode != 'none':
                     for i in range(SIZE):
                         if self.cfg.halo_swap_mode == "all_to_all_opt_intel":
@@ -1337,8 +1358,7 @@ class Trainer:
                     self.buffer_send = None
                     self.buffer_recv = None
 
-                x_scaled = (data['x'][0] - stats['x_mean'])/(stats['x_std'] + SMALL)
-                out_gnn = self.model(x = x_scaled,
+                out_gnn = self.model(x = data['x'][0],
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,
                              edge_weight = graph.edge_weight,
@@ -1352,7 +1372,7 @@ class Trainer:
                              batch = graph.batch)   
        
                 # Accumulate loss
-                target = (data['y'][0] - stats['y_mean'])/(stats['y_std'] + SMALL)
+                target = data['y'][0]
                 n_nodes_local = graph.n_nodes_local
                 if SIZE == 1 or not self.cfg.consistency:
                     loss = self.loss_fn(out_gnn[:n_nodes_local], target[:n_nodes_local])
@@ -1447,7 +1467,7 @@ def train(cfg: DictConfig,
             trainer.iteration += 1 
             
             # Calculate gradients  
-            postproc_out = trainer.postprocess()
+            if cfg.postprocess: postproc_out = trainer.postprocess()
 
             # Logging 
             if RANK == 0:
@@ -1461,19 +1481,21 @@ def train(cfg: DictConfig,
                 sepstr = '-' * len(summary_train)
                 log.info(sepstr)
                 log.info(summary_train)
-                t_dataTransfer = trainer.timers['dataTransfer'][trainer.timer_step-1]
-                t_bufferInit = trainer.timers['bufferInit'][trainer.timer_step-1]
-                t_forwardPass = trainer.timers['forwardPass'][trainer.timer_step-1]
-                t_loss = trainer.timers['loss'][trainer.timer_step-1]
-                t_backwardPass = trainer.timers['backwardPass'][trainer.timer_step-1]
-                t_optimizerStep = trainer.timers['optimizerStep'][trainer.timer_step-1]
-                log.info(f"t_dataTransfer: {t_dataTransfer:.4g} sec") 
-                log.info(f"t_bufferInit: {t_bufferInit:.4g} sec")
-                log.info(f"t_forwardPass: {t_forwardPass:.4g} sec [{n_nodes_local/t_forwardPass:.4e} nodes/sec]")
-                log.info(f"t_loss: {t_loss:.4g} sec [{n_nodes_local/t_loss:.4e} nodes/sec]")
-                log.info(f"t_backwardPass: {t_backwardPass:.4g} sec [{n_nodes_local/t_backwardPass:.4e} nodes/sec]")
-                log.info(f"t_optimizerStep: {t_optimizerStep:.4g} sec")
-                log.info(f"grad norm: {postproc_out[0]:.6g}")
+                if cfg.timers:
+                    t_dataTransfer = trainer.timers['dataTransfer'][trainer.timer_step-1]
+                    t_bufferInit = trainer.timers['bufferInit'][trainer.timer_step-1]
+                    t_forwardPass = trainer.timers['forwardPass'][trainer.timer_step-1]
+                    t_loss = trainer.timers['loss'][trainer.timer_step-1]
+                    t_backwardPass = trainer.timers['backwardPass'][trainer.timer_step-1]
+                    t_optimizerStep = trainer.timers['optimizerStep'][trainer.timer_step-1]
+                    log.info(f"t_dataTransfer: {t_dataTransfer:.4g} sec") 
+                    log.info(f"t_bufferInit: {t_bufferInit:.4g} sec")
+                    log.info(f"t_forwardPass: {t_forwardPass:.4g} sec [{n_nodes_local/t_forwardPass:.4e} nodes/sec]")
+                    log.info(f"t_loss: {t_loss:.4g} sec [{n_nodes_local/t_loss:.4e} nodes/sec]")
+                    log.info(f"t_backwardPass: {t_backwardPass:.4g} sec [{n_nodes_local/t_backwardPass:.4e} nodes/sec]")
+                    log.info(f"t_optimizerStep: {t_optimizerStep:.4g} sec")
+                if cfg.postprocess:
+                    log.info(f"grad norm: {postproc_out[0]:.6g}")
 
             # Checkpoint  
             if trainer.iteration % cfg.ckptfreq == 0:

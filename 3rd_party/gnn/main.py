@@ -300,16 +300,6 @@ class Trainer:
         # ~~~~ Init torch stuff 
         self.setup_torch()
 
-        ## ~~~~ If online, wait for graph data to be populated
-        #if self.cfg.online:
-        #    if RANK == 0: log.info('Waiting for graph data from simulation ...')
-        #    while True:
-        #        if (self.client.file_exists(f'N_rank_{RANK}_size_{SIZE}')):
-        #            time.sleep(0.5)
-        #            break
-        #    COMM.Barrier()
-        #    if RANK == 0: log.info('Graph data available from simulation')
-
         # ~~~~ Setup local graph 
         self.data_reduced, \
             self.data_full, \
@@ -321,6 +311,8 @@ class Trainer:
         self.setup_halo()
 
         # ~~~~ Setup data 
+        self.data_list = []
+        self.data_traj = []
         self.data = self.setup_data()
         if RANK == 0: log.info('Done with setup_data')
 
@@ -879,7 +871,6 @@ class Trainer:
 
         # populate dataset
         if RANK == 0: log.info("Loading field data...")
-        data_list = []
         if not self.cfg.online:
             path_prepend = data_dir + '/'
             input_files = [path_prepend+input_file for input_file in input_files]
@@ -887,14 +878,14 @@ class Trainer:
         for i in range(len(input_files)):
             data_x = self.prepare_snapshot_data(input_files[i], 3)
             data_y = self.prepare_snapshot_data(output_files[i], 1)
-            data_list.append({'x': data_x, 'y':data_y})
+            self.data_list.append({'x': data_x, 'y':data_y})
 
         # split into train/validation
         data = {'train': [], 'validation': []}
         fraction_valid = 0.1
-        if fraction_valid > 0 and len(data_list)*fraction_valid > 1:
+        if fraction_valid > 0 and len(self.data_list)*fraction_valid > 1:
             # How many total snapshots to extract
-            n_full = len(data_list)
+            n_full = len(self.data_list)
             n_valid = int(np.floor(fraction_valid * n_full))
 
             # Get validation set indices
@@ -904,10 +895,10 @@ class Trainer:
             idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
 
             # Train/validation split
-            data['train'] = [data_list[i] for i in idx_train]
-            data['validation'] = [data_list[i] for i in idx_valid]
+            data['train'] = [self.data_list[i] for i in idx_train]
+            data['validation'] = [self.data_list[i] for i in idx_valid]
         else:
-            data['train'] = data_list
+            data['train'] = self.data_list
             data['validation'] = [{}]
 
         if RANK == 0: log.info(f"Number of training snapshots: {len(data['train'])}")
@@ -942,7 +933,6 @@ class Trainer:
 
     def load_trajectory(self, data_dir: str):
         # read files
-        data_traj = []
         if not self.cfg.online:
             files = os.listdir(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
             #files = [item for item in files_temp if 'p_step' not in item]
@@ -960,7 +950,7 @@ class Trainer:
                 path_y_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_y[i]]
                 data_x_i = self.prepare_snapshot_data(path_x_i)
                 data_y_i = self.prepare_snapshot_data(path_y_i)
-                data_traj.append(
+                self.data_traj.append(
                         {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
                 )
         else:
@@ -970,14 +960,14 @@ class Trainer:
             for i in range(len(output_files)):
                 data_x_i = self.prepare_snapshot_data(input_files[i])
                 data_y_i = self.prepare_snapshot_data(output_files[i])
-                data_traj.append(
+                self.data_traj.append(
                         {'x': data_x_i, 'y':data_y_i}
                 )
 
         # split into train/validation
         data = {'train': [], 'validation': []}
         fraction_valid = 0.1
-        if fraction_valid > 0 and len(data_traj)*fraction_valid > 1:
+        if fraction_valid > 0 and len(self.data_traj)*fraction_valid > 1:
             # How many total snapshots to extract 
             n_full = len(idx_x)
             n_valid = int(np.floor(fraction_valid * n_full))
@@ -989,10 +979,10 @@ class Trainer:
             idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
 
             # Train/validation split 
-            data['train'] = [data_traj[i] for i in idx_train]
-            data['validation'] = [data_traj[i] for i in idx_valid]
+            data['train'] = [self.data_traj[i] for i in idx_train]
+            data['validation'] = [self.data_traj[i] for i in idx_valid]
         else:
-            data['train'] = data_traj
+            data['train'] = self.data_traj
             data['validation'] = [{}]
 
         if RANK == 0: log.info(f"Number of training snapshots: {len(data['train'])}")

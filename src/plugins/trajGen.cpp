@@ -108,7 +108,18 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
     int tstep, 
     const std::string& field_name) 
 {
-    if ((tstep % skip == 0) or (tstep % (skip+dt_factor) == 0)) {
+    bool send_data = false;
+    if (skip == 0) {
+        if (tstep % dt_factor == 0) {
+            send_data = true;
+        }
+    } else {
+        if ((tstep % skip == 0) or (tstep % (skip+dt_factor) == 0)) {
+            send_data = true;
+        }
+    }
+
+    if (send_data) {
         MPI_Comm &comm = platform->comm.mpiComm;
         unsigned long int num_dim = nrs->mesh->dim;
         unsigned long int field_offset = nrs->fieldOffset;

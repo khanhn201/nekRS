@@ -110,7 +110,7 @@ void smartredis_client_t::put_step_num(int tstep)
   }
   MPI_Barrier(platform->comm.mpiComm);
   if (_rank == 0)
-    printf("Done\n\n");
+    printf("Done\n");
   fflush(stdout);
 }
 
@@ -130,7 +130,7 @@ void smartredis_client_t::append_dataset_to_list(const std::string& dataset_name
   _client->put_dataset(dataset);
   _client->append_to_list(list_name,dataset);
   if (_rank == 0)
-    printf("Done\n\n");
+    printf("Done\n");
 }
 
 // Initialize training for the wall shear stress model
@@ -200,7 +200,7 @@ void smartredis_client_t::init_wallModel_train()
   MPI_Barrier(platform->comm.mpiComm);
 
   if (_rank == 0)
-    printf("Done\n\n");
+    printf("Done\n");
   fflush(stdout);
 }
 

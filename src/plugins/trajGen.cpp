@@ -134,12 +134,12 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
             dfloat *U = new dfloat[num_dim * field_offset]();
             nrs->o_U.copyTo(U, num_dim * field_offset);
             if (first_step) {
-                client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
                     "inputs" + irank, U, num_dim, field_offset);
             } else {
-                client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
                     "outputs" + irank, U, num_dim, field_offset);
-                client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
                     "inputs" + irank, U, num_dim, field_offset);
             }
         }
@@ -147,19 +147,19 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
             dfloat *P = new dfloat[field_offset]();
             nrs->o_P.copyTo(P, field_offset);
             if (first_step) {
-                client->append_dataset_to_list("p_step_" + std::to_string(tstep), "data",
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
                     "inputs" + irank, P, num_dim, field_offset);
             } else {
-                client->append_dataset_to_list("p_step_" + std::to_string(tstep), "data",
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
                     "outputs" + irank, P, 1, field_offset);
-                client->append_dataset_to_list("p_step_" + std::to_string(tstep), "data",
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
                     "inputs" + irank, P, 1, field_offset);
             }
         }
         if (first_step) first_step = false;
         MPI_Barrier(comm);
         if (rank == 0 and verbose) {
-            printf("[TRAJ WRITE DB] -- Done writing data to DB");
+            printf("[TRAJ WRITE DB] -- Done writing data to DB\n");
         }
     }
 }

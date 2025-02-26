@@ -954,8 +954,9 @@ class Trainer:
                         {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
                 )
         else:
+            COMM.Barrier() # sync helps
+            output_files = self.client.get_file_list(f'outputs_rank_{RANK}') # outputs must come first
             input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
-            output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
             print(f'[{RANK}]: Found {len(output_files)} trajectory files in DB',flush=True)
             for i in range(len(output_files)):
                 data_x_i = self.prepare_snapshot_data(input_files[i])
@@ -1024,10 +1025,10 @@ class Trainer:
 
         device_for_loading = 'cpu'
 
-        if self.cfg.model_task == "time independent":
+        if self.cfg.model_task == "time_independent":
             data_dir = self.cfg.gnn_outputs_path
             data, stats = self.load_field_data(data_dir)
-        elif self.cfg.model_task == "time dependent":
+        elif self.cfg.model_task == "time_dependent":
             data_dir = self.cfg.traj_data_path
             data, stats = self.load_trajectory(data_dir)
           

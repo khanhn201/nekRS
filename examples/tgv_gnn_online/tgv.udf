@@ -176,6 +176,9 @@ void UDF_ExecuteStep(double time, int tstep)
   if (exit_val==0) {
     nekrs::setEndTime(-10.0);
     nekrs::forceLastStep();
-    //delete graph; // gives a free() error, so commenting for now, but revisit!
+  }
+
+  if (nrs->lastStep || numSteps == 0) {
+    delete graph;
   }
 }

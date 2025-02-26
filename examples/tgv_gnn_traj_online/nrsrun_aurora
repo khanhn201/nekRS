@@ -6,8 +6,8 @@ set -e
 : ${NEKRS_GPU_MPI:=0}
 : ${NEKRS_BACKEND:="dpcpp"}
 : ${RANKS_FOR_BUILD:=12}
-: ${SIM_RANKS_PER_NODE:=2}
-: ${TRAIN_RANKS_PER_NODE:=2}
+: ${SIM_RANKS_PER_NODE:=4}
+: ${TRAIN_RANKS_PER_NODE:=4}
 : ${DEPLOYMENT:="colocated"}
 : ${DB_NODES:=1}
 : ${SIM_NODES:=1}
@@ -134,7 +134,7 @@ echo "# Trainer config" >> $CFILE
 echo "train:" >> $CFILE
 echo "    executable: \"${NEKRS_HOME}/3rd_party/gnn/main.py\"" >> $CFILE
 echo "    affinity: \"./${TAFF_FILE}\"" >> $CFILE
-echo "    arguments: \"backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False target_loss=7.0454e-1 model_task=\"time dependent\" verbose=True\"" >> $CFILE
+echo "    arguments: \"backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False target_loss=7.0454e-1 model_task=time_dependent verbose=True\"" >> $CFILE
 echo "    copy_files: []" >> $CFILE
 echo "    link_files: [\"./${TAFF_FILE}\"]" >> $CFILE
 

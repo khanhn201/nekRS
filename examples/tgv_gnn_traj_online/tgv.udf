@@ -137,9 +137,10 @@ void UDF_Setup()
 
   // trajectory generation plugin
   int dt_factor = 10;
+  int skkip = 0;
   dfloat t0;
   platform->options.getArgs("START TIME", t0);
-  tgen = new trajGen_t (nrs, dt_factor, t0);
+  tgen = new trajGen_t (nrs, dt_factor, skip, t0);
   //tgen->trajGenSetup();
 }
 
@@ -151,8 +152,9 @@ void UDF_ExecuteStep(double time, int tstep)
   platform->options.getArgs("NUMBER TIMESTEPS", numSteps);
 
   // write trajectory
-  if (tstep % tgen->dt_factor == 0)
+  if (tstep <= 50) {
     tgen->trajGenWriteDB(client, time, tstep, "velocity");
+  }
 
   if (nrs->checkpointStep) {
     nrs->Qcriterion(o_qcriterion);

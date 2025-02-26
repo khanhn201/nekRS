@@ -14,18 +14,19 @@ void deleteDirectoryContents(const std::filesystem::path& dir);
 class trajGen_t 
 {
 public:
-    trajGen_t(nrs_t *nrs, int dt_factor_, dfloat time_init_);
+    trajGen_t(nrs_t *nrs, int dt_factor_, int skip_, dfloat time_init_);
     ~trajGen_t(); 
 
     // public variables
     std::string writePath;
     dfloat time_init;
     int dt_factor;
+    int skip;
     bool first_step = true;
     std::string irank, nranks;
-    dfloat *previous_U;
-    dfloat *previous_P;
-    int previous_tstep;
+    //dfloat *previous_U;
+    //dfloat *previous_P;
+    //int previous_tstep;
     
     // member functions 
     void trajGenSetup();

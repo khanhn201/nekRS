@@ -14,11 +14,12 @@ void deleteDirectoryContents(const std::filesystem::path& dir)
 }
 
 
-trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, dfloat time_init_)
+trajGen_t::trajGen_t(nrs_t *nrs_, int dt_factor_, int skip_, dfloat time_init_)
 {
     nrs = nrs_; // set nekrs object
     mesh = nrs->mesh; // set mesh object
     dt_factor = dt_factor_; 
+    skip = skip_;
     time_init = time_init_; 
 
     // set MPI rank and size 
@@ -107,40 +108,48 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
     int tstep, 
     const std::string& field_name) 
 {
-    MPI_Comm &comm = platform->comm.mpiComm;
-    unsigned long int num_dim = nrs->mesh->dim;
-    unsigned long int field_offset = nrs->fieldOffset;
+    if ((tstep % skip == 0) or (tstep % (skip+dt_factor) == 0)) {
+        MPI_Comm &comm = platform->comm.mpiComm;
+        unsigned long int num_dim = nrs->mesh->dim;
+        unsigned long int field_offset = nrs->fieldOffset;
 
-
-    // print stuff
-    if (rank == 0) {
-        if (verbose) printf("[TRAJ WRITE] -- In tstep %d, at physical time %g \n", tstep, time);
-    }
-
-    // write data
-    if (field_name == "velocity" || field_name == "all") {
-        dfloat *U = new dfloat[num_dim * field_offset]();
-        nrs->o_U.copyTo(U, num_dim * field_offset);
-        if (first_step) {
-            client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
-                "inputs" + irank, U, num_dim, field_offset);
-            previous_U = new dfloat[num_dim * field_offset]();
-            std::memcpy(previous_U, U, num_dim * field_offset * sizeof(float));
-            previous_tstep = tstep;
-        } else {
-            client->append_dataset_to_list("u_step_" + std::to_string(previous_tstep), "data",
-                "outputs" + irank, previous_U, num_dim, field_offset);
-            client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
-                "output" + irank, U, num_dim, field_offset);
-
+        // print stuff
+        if (rank == 0 and verbose) {
+            printf("[TRAJ WRITE DB] -- Writing data at tstep %d and physical time %g \n", tstep, time);
         }
-    }
-    if (field_name == "pressure" || field_name == "all") {
-        dfloat *P = new dfloat[field_offset]();
-        nrs->o_P.copyTo(P, field_offset);
 
-        writeToFileBinaryF(writePath + "/p_step_" + std::to_string(tstep) + ".bin",
-                            P, nrs->fieldOffset, 1);
+        // write data
+        if (field_name == "velocity" || field_name == "all") {
+            dfloat *U = new dfloat[num_dim * field_offset]();
+            nrs->o_U.copyTo(U, num_dim * field_offset);
+            if (first_step) {
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                    "inputs" + irank, U, num_dim, field_offset);
+            } else {
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                    "outputs" + irank, U, num_dim, field_offset);
+                client->append_dataset_to_list("u_step_" + std::to_string(tstep), "data",
+                    "inputs" + irank, U, num_dim, field_offset);
+            }
+        }
+        if (field_name == "pressure" || field_name == "all") {
+            dfloat *P = new dfloat[field_offset]();
+            nrs->o_P.copyTo(P, field_offset);
+            if (first_step) {
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep), "data",
+                    "inputs" + irank, P, num_dim, field_offset);
+            } else {
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep), "data",
+                    "outputs" + irank, P, 1, field_offset);
+                client->append_dataset_to_list("p_step_" + std::to_string(tstep), "data",
+                    "inputs" + irank, P, 1, field_offset);
+            }
+        }
+        if (first_step) first_step = false;
+        MPI_Barrier(comm);
+        if (rank == 0 and verbose) {
+            printf("[TRAJ WRITE DB] -- Done writing data to DB");
+        }
     }
 }
 #endif

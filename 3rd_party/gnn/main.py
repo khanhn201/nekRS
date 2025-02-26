@@ -941,27 +941,38 @@ class Trainer:
         return data, stats
 
     def load_trajectory(self, data_dir: str):
-        # read files and remove pressure
-        files = os.listdir(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
-        #files = [item for item in files_temp if 'p_step' not in item]
-        files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
-        
-        # populate dataset for single-step predictions 
-        idx = list(range(len(files)))
-        idx_x = idx[:-1]
-        idx_y = idx[1:]
+        # read files
         data_traj = []
-        if RANK == 0: log.info("Loading trajectory data...")
-        for i in range(len(idx_x)):
-            step_x_i = idx_x[i]
-            step_y_i = idx_y[i]
-            path_x_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_x[i]]
-            path_y_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_y[i]]
-            data_x_i = self.prepare_snapshot_data(path_x_i)
-            data_y_i = self.prepare_snapshot_data(path_y_i)
-            data_traj.append(
-                    {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
-                    )
+        if not self.cfg.online:
+            files = os.listdir(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
+            #files = [item for item in files_temp if 'p_step' not in item]
+            files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
+        
+            # populate dataset for single-step predictions 
+            idx = list(range(len(files)))
+            idx_x = idx[:-1]
+            idx_y = idx[1:]
+            if RANK == 0: log.info("Loading trajectory data...")
+            for i in range(len(idx_x)):
+                step_x_i = idx_x[i]
+                step_y_i = idx_y[i]
+                path_x_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_x[i]]
+                path_y_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_y[i]]
+                data_x_i = self.prepare_snapshot_data(path_x_i)
+                data_y_i = self.prepare_snapshot_data(path_y_i)
+                data_traj.append(
+                        {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
+                )
+        else:
+            input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
+            output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
+            print(f'[{RANK}]: Found {len(output_files)} trajectory files in DB',flush=True)
+            for i in range(len(output_files)):
+                data_x_i = self.prepare_snapshot_data(input_files[i])
+                data_y_i = self.prepare_snapshot_data(output_files[i])
+                data_traj.append(
+                        {'x': data_x_i, 'y':data_y_i}
+                )
 
         # split into train/validation
         data = {'train': [], 'validation': []}

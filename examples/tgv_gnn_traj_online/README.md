@@ -1,15 +1,15 @@
 # Online training of a time independent GNN surrogate model
 
-This example demonstrates how the `gnn` and the `smartRedis` plugins can be used to create a distributed graph from the nekRS mesh and online train a GNN from a series of solution fields.
+This example demonstrates how the `gnn`, `trajGen`, and `smartRedis` plugins can be used to create a distributed graph from the nekRS mesh and online train a GNN from a solution trajectory.
 The online workflow is set up using SmartSim and SmartRedis, as in the [turbChannel_smartredis](../turbChannel_smartredis/) example.
 The example flow is based off of the [Taylor-Green-Vortex flow](../tgv/README.md), however on a slightly smaller mesh. 
-In this example, the model takes as inputs the three components of velocity and learns to predict the pressure field at every graph (mesh) node.
-It is a time independent modeling task, since no information regarding the time dependency of the solution stepshots is given to the GNN.
+In this example, the model takes as inputs the three components of velocity at a given time step and learns to predict the velocity field at a future step, thus advancing the solution forward and replacing the solver.
+It is a time dependent modeling task, the model learns how to predict a future time step.
 
-Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh, followed by calls to `graph->gnnSetup();` and `graph->gnnWriteDB();` to setup and write the GNN input files to the SmartSim database, respectively. 
-In `UDF_ExecuteStep()`, the `writeToFileBinaryF()` routine is called to send the velocity and pressure fields to the database as well using the [DataSet](https://www.craylabs.org/docs/sr_data_structures.html#dataset) data structure. 
-These keys-value pairs for the training data are tagged with the time stamp, rank ID, and job size.
-For simplicity and reproducibility, nekRS is set up to send training data only at the first time step, thus only using the velocity and pressure for the initial condition to train the model, but `UDF_ExecuteStep()` can be changed to send as many time steps as desired.
+Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh, followed by calls to `graph->gnnSetup();` and `graph->gnnWriteDB();` to setup and write the GNN input files to the SmartSim database, respectively. Here, the SmartRedis client and the trajectory generation class are also initialized.
+In `UDF_ExecuteStep()`, `append_dataset_to_list()` method of the SmartRedis client class is called to send the velocity field to the database as well using the [DataSet](https://www.craylabs.org/docs/sr_data_structures.html#dataset) data structure. 
+nekRS places the solution fields into two DataSet lists with inputs and outputs so the GNN training easily can pair the time steps the model should learn from.
+For simplicity and reproducibility, nekRS is set up to send training data every 10 time steps for 5 consicutive times only (up to time step 50), but `UDF_ExecuteStep()` can be changed to send as many time steps as desired.
 
 ## Building nekRS
 

@@ -6,8 +6,8 @@ The example flow is based off of the [Taylor-Green-Vortex flow](../tgv/README.md
 In this example, the model takes as inputs the three components of velocity and learns to predict the pressure field at every graph (mesh) node.
 It is a time independent modeling task, since no information regarding the time dependency of the solution stepshots is given to the GNN.
 
-Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh, followed by calls to `graph->gnnSetup();` and `graph->gnnWriteDB();` to setup and write the GNN input files to the SmartSim database, respectively. 
-In `UDF_ExecuteStep()`, the `writeToFileBinaryF()` routine is called to send the velocity and pressure fields to the database as well using the [DataSet](https://www.craylabs.org/docs/sr_data_structures.html#dataset) data structure. 
+Specifically, in `UDF_Setup()`, the `graph` class is instantiated from the mesh, followed by calls to `graph->gnnSetup();` and `graph->gnnWriteDB();` to setup and write the GNN input files to the SmartSim database, respectively. Here, the SmartRedis client is also initialized connecting nekRS to the SmartSim Orchestrator (the database).
+In `UDF_ExecuteStep()`, the `append_dataset_to_list()` method of the SmartRedis client class is called to send the velocity and pressure fields to the database using the [DataSet](https://www.craylabs.org/docs/sr_data_structures.html#dataset) data structure. 
 These keys-value pairs for the training data are tagged with the time stamp, rank ID, and job size.
 For simplicity and reproducibility, nekRS is set up to send training data only at the first time step, thus only using the velocity and pressure for the initial condition to train the model, but `UDF_ExecuteStep()` can be changed to send as many time steps as desired.
 

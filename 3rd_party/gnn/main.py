@@ -924,7 +924,7 @@ class Trainer:
         else: 
             x_mean, x_std = self.compute_statistics(data['train'],'x')
             y_mean, y_std = self.compute_statistics(data['train'],'y')
-            if RANK == 0:
+            if RANK == 0 and not self.cfg.online:
                 np.savez(data_dir + f"/data_stats.npz", 
                      x_mean=x_mean, x_std=x_std,
                      y_mean=y_mean, y_std=y_std,

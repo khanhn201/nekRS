@@ -64,16 +64,18 @@ class ShootingWorkflow():
             self.train_nodes = ','.join(self.nodelist[self.cfg.run_args.sim_nodes + self.cfg.run_args.db_nodes: \
                                 self.cfg.run_args.sim_nodes + self.cfg.run_args.db_nodes + \
                                 self.cfg.run_args.ml_nodes])
+            print(f"Database running on {self.cfg.run_args.db_nodes} nodes:")
+            print(self.db_nodes)
+            print(f"nekRS running on {self.cfg.run_args.sim_nodes} nodes:")
+            print(self.sim_nodes)
+            print(f"Training running on {self.cfg.run_args.ml_nodes} nodes:")
+            print(self.train_nodes,'\n',flush=True)
         else:
             self.sim_nodes = ','.join(self.nodelist)
             self.db_nodes = self.sim_nodes
             self.train_nodes = self.sim_nodes
-        print(f"Database running on {self.cfg.run_args.db_nodes} nodes:")
-        print(self.db_nodes)
-        print(f"Simulatiom running on {self.cfg.run_args.sim_nodes} nodes:")
-        print(self.sim_nodes)
-        print(f"Training running on {self.cfg.run_args.ml_nodes} nodes:")
-        print(self.train_nodes,flush=True)
+            print(f"Database, nekRS and training running on {self.cfg.run_args.sim_nodes} nodes:")
+            print(self.sim_nodes,'\n',flush=True)
 
     def launchClusteredDB(self) -> None:
         """Launch the clustered SmartSim Orchestrator
@@ -156,7 +158,7 @@ class ShootingWorkflow():
                         **kwargs
                 )
         
-        print("Launching the NekRS ...")
+        print("Launching nekRS ...")
         if len(self.cfg.sim.copy_files)>0 or len(self.cfg.sim.link_files)>0:
             self.nekrs_model.attach_generator_files(
                 to_copy=list(self.cfg.sim.copy_files), 
@@ -174,10 +176,7 @@ class ShootingWorkflow():
             SSDB = self.nekrs_model.run_settings.env_vars['SSDB']
             env_vars = {'SSDB': SSDB}
         ml_exe = self.cfg.train.executable
-        ml_exe = ml_exe + f' --dbnodes={self.cfg.run_args.db_nodes}' \
-                        + f' --device={self.cfg.train.device}' \
-                        + f' --ppn={self.cfg.run_args.mlprocs_pn}' \
-                        + f' --logging={self.cfg.train.logging}'
+        ml_exe = ml_exe + ' ' + self.cfg.train.arguments
         ml_settings = PalsMpiexecSettings(
                            'python',
                            exe_args=ml_exe,
@@ -195,7 +194,7 @@ class ShootingWorkflow():
                                                 skip
             )
 
-        print("Launching training script ... ")
+        print("Launching GNN training ... ")
         self.train_model = self.exp.create_model(f"train_{self.fine_tune_iter}", ml_settings)
         if len(self.cfg.train.copy_files)>0 or len(self.cfg.train.link_files)>0:
             self.train_model.attach_generator_files(to_copy=list(self.cfg.train.copy_files), 

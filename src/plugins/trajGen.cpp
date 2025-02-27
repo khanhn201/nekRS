@@ -108,18 +108,23 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
     int tstep, 
     const std::string& field_name) 
 {
-    bool send_data = false;
+    bool send_inputs = false;
+    bool send_outputs = false;
     if (skip == 0) {
         if (tstep % dt_factor == 0) {
-            send_data = true;
+            send_inputs = true;
+            send_outputs = true;
         }
     } else {
-        if ((tstep % skip == 0) or (tstep % (skip+dt_factor) == 0)) {
-            send_data = true;
+        if (tstep % skip == 0) {
+            send_inputs = true;
+        }
+        if (tstep % skip == dt_factor) {
+            send_outputs = true;
         }
     }
 
-    if (send_data) {
+    if (send_inputs or send_outputs) {
         MPI_Comm &comm = platform->comm.mpiComm;
         unsigned long int num_dim = nrs->mesh->dim;
         unsigned long int field_offset = nrs->fieldOffset;
@@ -137,10 +142,14 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
                 client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
                     "inputs" + irank, U, num_dim, field_offset);
             } else {
-                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
-                    "outputs" + irank, U, num_dim, field_offset);
-                client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
-                    "inputs" + irank, U, num_dim, field_offset);
+                if (send_outputs) {
+                    client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
+                        "outputs" + irank, U, num_dim, field_offset);
+                }
+                if (send_inputs) {
+                    client->append_dataset_to_list("u_step_" + std::to_string(tstep) + irank, "data",
+                        "inputs" + irank, U, num_dim, field_offset);
+                }
             }
         }
         if (field_name == "pressure" || field_name == "all") {
@@ -150,10 +159,14 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
                 client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
                     "inputs" + irank, P, num_dim, field_offset);
             } else {
-                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
-                    "outputs" + irank, P, 1, field_offset);
-                client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
-                    "inputs" + irank, P, 1, field_offset);
+                if (send_outputs) {
+                    client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
+                        "outputs" + irank, P, 1, field_offset);
+                }
+                if (send_inputs) {
+                    client->append_dataset_to_list("p_step_" + std::to_string(tstep) + irank, "data",
+                        "inputs" + irank, P, 1, field_offset);
+                }
             }
         }
         if (first_step) first_step = false;

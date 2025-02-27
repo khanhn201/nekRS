@@ -49,6 +49,7 @@ traj_data_path: ${work_dir}/traj_poly_1/
 
 # Online training
 online: False
+online_update_freq: 10
 client: 
     backend: "smartredis"
     db_nodes: 1

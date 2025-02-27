@@ -30,6 +30,7 @@ except ModuleNotFoundError as e:
     pass
 #torch.use_deterministic_algorithms(True)
 from torch.utils.data import DataLoader
+#import torch.utils.data
 #import torch.utils.data.distributed
 from torch.cuda.amp.grad_scaler import GradScaler
 #import torch.multiprocessing as mp
@@ -314,7 +315,6 @@ class Trainer:
 
         # ~~~~ Setup data 
         self.data_list = []
-        self.data_traj = []
         self.data = {}
         self.setup_data()
         if RANK == 0: log.info('Done with setup_data')
@@ -880,16 +880,15 @@ class Trainer:
             path_prepend = data_dir + '/'
             input_files = [path_prepend+input_file for input_file in input_files]
             output_files = [path_prepend+output_file for output_file in output_files]
-        num_new_files = len(output_files) - len(self.data_list)
-        log.info(f'[{RANK}]: Found {num_new_files} new trajectory files in DB')
-        for i in range(len(self.data_list),num_new_files):
-            data_x = self.prepare_snapshot_data(input_files[i], 3)
-            data_y = self.prepare_snapshot_data(output_files[i], 1)
+        log.info(f'[RANK {RANK}]: Found {len(output_files)} new field files in DB')
+        for i in range(len(output_files)):
+            data_x = self.prepare_snapshot_data(input_files[i],3)
+            data_y = self.prepare_snapshot_data(output_files[i],1)
             self.data_list.append({'x': data_x, 'y':data_y})
 
         # split into train/validation
         data = {'train': [], 'validation': []}
-        fraction_valid = 0.1
+        fraction_valid = 0.0
         if fraction_valid > 0 and len(self.data_list)*fraction_valid > 1:
             # How many total snapshots to extract
             n_full = len(self.data_list)
@@ -909,28 +908,29 @@ class Trainer:
             data['validation'] = [{}]
 
         if RANK == 0: log.info(f"Number of training snapshots: {len(data['train'])}")
-        if RANK == 0: log.info(f"Number of validation snapshots: {len(data['validation'])}")
+        if RANK == 0: log.info(f"Number of validation snapshots: {0}")
         
         # Compute statistics for normalization
-        stats = {'x': [], 'y': []} 
-        if os.path.exists(data_dir + f"/data_stats.npz"):
-            if RANK == 0:
-                npzfile = np.load(data_dir + f"/data_stats.npz")
-                stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
-                stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
-            stats = COMM.bcast(stats, root=0)
-            if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
-        else: 
-            x_mean, x_std = self.compute_statistics(data['train'],'x')
-            y_mean, y_std = self.compute_statistics(data['train'],'y')
-            if RANK == 0 and not self.cfg.online:
-                np.savez(data_dir + f"/data_stats.npz", 
-                     x_mean=x_mean, x_std=x_std,
-                     y_mean=y_mean, y_std=y_std,
-                )
-            stats['x'] = [x_mean, x_std]
-            stats['y'] = [y_mean, y_std]
-            if RANK == 0: log.info(f"Computed training data statistics for each node feature")
+        stats = {'x': [], 'y': []}
+        if 'stats' not in self.data.keys():
+            if os.path.exists(data_dir + f"/data_stats.npz"):
+                if RANK == 0:
+                    npzfile = np.load(data_dir + f"/data_stats.npz")
+                    stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
+                    stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
+                stats = COMM.bcast(stats, root=0)
+                if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
+            else: 
+                x_mean, x_std = self.compute_statistics(data['train'],'x')
+                y_mean, y_std = self.compute_statistics(data['train'],'y')
+                if RANK == 0 and not self.cfg.online:
+                    np.savez(data_dir + f"/data_stats.npz", 
+                        x_mean=x_mean, x_std=x_std,
+                        y_mean=y_mean, y_std=y_std,
+                    )
+                stats['x'] = [x_mean, x_std]
+                stats['y'] = [y_mean, y_std]
+                if RANK == 0: log.info(f"Computed training data statistics for each node feature")
         return data, stats
 
     def load_trajectory(self, data_dir: str):
@@ -953,9 +953,9 @@ class Trainer:
                 step_y_i = idx_y[i]
                 path_x_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_x[i]]
                 path_y_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_y[i]]
-                data_x_i = self.prepare_snapshot_data(path_x_i)
-                data_y_i = self.prepare_snapshot_data(path_y_i)
-                self.data_traj.append(
+                data_x_i = self.prepare_snapshot_data(path_x_i,3)
+                data_y_i = self.prepare_snapshot_data(path_y_i,3)
+                self.data_list.append(
                         {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
                 )
         else:
@@ -963,20 +963,19 @@ class Trainer:
             output_files = self.client.get_file_list(f'outputs_rank_{RANK}') # outputs must come first
             input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
 
-            # Load new files
-            num_new_files = len(output_files) - len(self.data_traj)
-            log.info(f'[{RANK}]: Found {num_new_files} new trajectory files in DB')
-            for i in range(len(self.data_traj),num_new_files):
+            # Load files
+            log.info(f'[RANK {RANK}]: Found {len(output_files)} trajectory files in DB')
+            for i in range(len(output_files)):
                 data_x_i = self.prepare_snapshot_data(input_files[i])
                 data_y_i = self.prepare_snapshot_data(output_files[i])
-                self.data_traj.append(
+                self.data_list.append(
                         {'x': data_x_i, 'y':data_y_i}
                 )
 
         # split into train/validation
         data = {'train': [], 'validation': []}
-        fraction_valid = 0.1
-        if fraction_valid > 0 and len(self.data_traj)*fraction_valid > 1:
+        fraction_valid = 0.0
+        if fraction_valid > 0 and len(self.data_list)*fraction_valid > 1:
             # How many total snapshots to extract 
             n_full = len(idx_x)
             n_valid = int(np.floor(fraction_valid * n_full))
@@ -988,36 +987,36 @@ class Trainer:
             idx_train = np.array(list(set(list(range(n_full))) - set(list(idx_valid))))
 
             # Train/validation split 
-            data['train'] = [self.data_traj[i] for i in idx_train]
-            data['validation'] = [self.data_traj[i] for i in idx_valid]
+            data['train'] = [self.data_list[i] for i in idx_train]
+            data['validation'] = [self.data_list[i] for i in idx_valid]
         else:
-            data['train'] = self.data_traj
+            data['train'] = self.data_list
             data['validation'] = [{}]
 
         if RANK == 0: log.info(f"Number of training snapshots: {len(data['train'])}")
-        if RANK == 0: log.info(f"Number of validation snapshots: {len(data['validation'])}")
+        if RANK == 0: log.info(f"Number of validation snapshots: {0}")
 
         # Compute statistics for normalization
-        if (not already_computed_stats):
         stats = {'x': [], 'y': []} 
-        if os.path.exists(data_dir + "/data_stats.npz"):
-            if RANK == 0:
-                npzfile = np.load(data_dir + "/data_stats.npz")
-                stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
-                stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
-            stats = COMM.bcast(stats, root=0)
-            if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
-        else: 
-            if RANK == 0: log.info(f"Computing training data statistics")
-            x_mean, x_std = self.compute_statistics(data['train'],'x')
-            if RANK == 0 and not self.cfg.online:
-                np.savez(data_dir + "/data_stats.npz", 
-                     x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
-                     y_mean=x_mean.cpu().numpy(), y_std=x_std.cpu().numpy(),
-                )
-            stats['x'] = [x_mean, x_std]
-            stats['y'] = [x_mean, x_std]
-            if RANK == 0: log.info(f"Computed training data statistics for each node feature")
+        if 'stats' not in self.data.keys():
+            if os.path.exists(data_dir + "/data_stats.npz"):
+                if RANK == 0:
+                    npzfile = np.load(data_dir + "/data_stats.npz")
+                    stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
+                    stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
+                stats = COMM.bcast(stats, root=0)
+                if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
+            else: 
+                if RANK == 0: log.info(f"Computing training data statistics")
+                x_mean, x_std = self.compute_statistics(data['train'],'x')
+                if RANK == 0 and not self.cfg.online:
+                    np.savez(data_dir + "/data_stats.npz", 
+                        x_mean=x_mean.cpu().numpy(), x_std=x_std.cpu().numpy(),
+                        y_mean=x_mean.cpu().numpy(), y_std=x_std.cpu().numpy(),
+                    )
+                stats['x'] = [x_mean, x_std]
+                stats['y'] = [x_mean, x_std]
+                if RANK == 0: log.info(f"Computed training data statistics for each node feature")
         return data, stats
  
     def setup_data(self):
@@ -1115,7 +1114,7 @@ class Trainer:
             log.info(f"shape of x: {data['train'][0]['x'].shape}")
             log.info(f"shape of y: {data['train'][0]['y'].shape}")
         
-        # ~~~~ Populate the data sampler. No need to use torch_geometric sampler -- we assume we have fixed connectivity, and a "GRAPH" batch size of 1. We need a sampler only over the [x,y] pairs (i.e., the elements in data_traj)
+        # ~~~~ Populate the data sampler. No need to use torch_geometric sampler -- we assume we have fixed connectivity, and a "GRAPH" batch size of 1. We need a sampler only over the [x,y] pairs (i.e., the elements in data_list)
         # train_loader = torch_geometric.loader.DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=False)
         assert self.cfg.batch_size == 1, f"batch_size {self.cfg.batch_size} must be set to 1!"
         assert self.cfg.val_batch_size == 1, f"val_batch_size {self.cfg.batch_size} must be set to 1!"
@@ -1162,18 +1161,40 @@ class Trainer:
     def update_data(self) -> None:
         """Update the data loaders after reading more data
         """
+        COMM.Barrier() # sync helps here
         if RANK == 0:
             log.info('In update_data...')
-        
-        if self.cfg.model_task == "time_independent":
-            data_dir = self.cfg.gnn_outputs_path
-            data, _ = self.load_field_data(data_dir)
-        elif self.cfg.model_task == "time_dependent":
-            data_dir = self.cfg.traj_data_path
-            data, _ = self.load_trajectory(data_dir)
 
-        train_data_scaled = []
+        # Check if new files are available to read
+        num_files = self.client.get_file_list_length(f'outputs_rank_{RANK}')
+        num_new_files = num_files - len(self.data_list)
+        if num_new_files == 0:
+            log.info(f'[RANK {RANK}]: No new files to read, did not update dataloader')
+            return
+        else:
+            log.info(f'[RANK {RANK}]: Found {num_new_files} new files to read, will update dataloader')
+        
+        # Read new files
+        output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
+        input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
+        if self.cfg.model_task == "time_independent":
+            for i in range(len(self.data_list),len(output_files)):
+                data_x = self.prepare_snapshot_data(input_files[i],3)
+                data_y = self.prepare_snapshot_data(output_files[i],1)
+                self.data_list.append({'x': data_x, 'y':data_y})
+        elif self.cfg.model_task == "time_dependent":
+            for i in range(len(self.data_list),len(output_files)):
+                data_x_i = self.prepare_snapshot_data(input_files[i],3)
+                data_y_i = self.prepare_snapshot_data(output_files[i],3)
+                self.data_list.append({'x': data_x_i, 'y':data_y_i})
+        data = {'train': [], 'validation': []}
+        data['train'] = list(self.data_list)
+        data['validation'] = [{}]
+
+        # Scale files 
+        # (ideally should save previouly scaled data so only have to scale new files)
         stats = self.data['stats']
+        train_data_scaled = []
         for item in  data['train']:
             tdict = {}
             tdict['x'] = (item['x'] - stats['x_mean'])/(stats['x_std'] + SMALL)
@@ -1182,20 +1203,19 @@ class Trainer:
         train_loader = DataLoader(dataset=train_data_scaled,
                                      batch_size=self.cfg.batch_size,
                                      shuffle=True)
-
-        val_data_scaled = data['validation'].copy()
-        if val_data_scaled[0]:
-            for item in  val_data_scaled:
-                tdict = {}
-                tdict['x'] = (item['x'] - stats['x_mean'])/(stats['x_std'] + SMALL)
-                tdict['y'] = (item['y'] - stats['y_mean'])/(stats['y_std'] + SMALL)
-                val_data_scaled.append(tdict)
-        valid_loader = DataLoader(dataset=val_data_scaled,
-                                            batch_size=self.cfg.val_batch_size,
-                                            shuffle=False)
-
         self.data['train']['loader'] = train_loader
-        self.data['validation']['loader'] = valid_loader
+
+        #val_data_scaled = data['validation'].copy()
+        #if val_data_scaled[0]:
+        #    for item in  val_data_scaled:
+        #        tdict = {}
+        #        tdict['x'] = (item['x'] - stats['x_mean'])/(stats['x_std'] + SMALL)
+        #        tdict['y'] = (item['y'] - stats['y_mean'])/(stats['y_std'] + SMALL)
+        #        val_data_scaled.append(tdict)
+        #valid_loader = DataLoader(dataset=val_data_scaled,
+        #                                    batch_size=self.cfg.val_batch_size,
+        #                                    shuffle=False)
+        #self.data['validation']['loader'] = valid_loader
 
     def setup_timers(self, n_record: int) -> dict:
         timers = {}
@@ -1271,10 +1291,9 @@ class Trainer:
         if WITH_XPU:
             torch.xpu.synchronize()
 
-    def train_step(self, data: DataBatch) -> Tensor:
+    def train_step(self, data) -> Tensor:
         loss = torch.tensor([0.0])
         graph = self.data['graph']
-        stats = self.data['stats']
         tic = time.time()
         if WITH_CUDA or WITH_XPU:
             data['x'] = data['x'].to(self.device)
@@ -1356,6 +1375,7 @@ class Trainer:
         if self.cfg.timers: self.update_timer('optimizerStep', self.timer_step, time.time() - tic)
 
         # Update timers
+        self.synchronize()
         if self.cfg.timers:
             if self.timer_step < self.timer_step_max - 1:
                 self.update_timer_stats()
@@ -1375,7 +1395,6 @@ class Trainer:
             for data in test_loader:
                 loss = torch.tensor([0.0])
                 graph = self.data['graph']
-                stats = self.data['stats']
         
                 if WITH_CUDA or WITH_XPU:
                     data['x'] = data['x'].to(self.device)
@@ -1495,13 +1514,10 @@ def train(cfg: DictConfig,
 
     # Training loop: 
     trainer.model.train()
-    #train_loader = trainer.data['train']['loader']
-    val_loader = trainer.data['validation']['loader']
-    num_batches = torch.tensor(len(train_loader))
-    batch_times = []
     loss_window = deque(maxlen=10)
     while True:
         train_loader = trainer.data['train']['loader']
+        val_loader = trainer.data['validation']['loader']
         for bidx, data in enumerate(train_loader):
             t_step = time.time()
             loss = trainer.train_step(data)
@@ -1520,7 +1536,7 @@ def train(cfg: DictConfig,
                     f'[STEP {trainer.iteration}]',
                     f'loss={loss:.4e}',
                     f'r_loss={running_loss:.4e}',   # Include average loss in your logging
-                    f't_step={t_step:.4g} sec',
+                    f't_step={t_step:.4g}sec',
                     f"lr={trainer.optimizer.param_groups[0]['lr']:.3e}"
                 ])
                 sepstr = '-' * len(summary_train)
@@ -1546,15 +1562,15 @@ def train(cfg: DictConfig,
             if trainer.iteration % cfg.ckptfreq == 0:
                 trainer.checkpoint()
 
+            # Break loop over dataloader
+            if trainer.iteration >= trainer.total_iterations:
+                break
+
             # Update data loader when online training
             if cfg.online:
                 if trainer.iteration % cfg.online_update_freq == 0:
                     trainer.update_data()
                     break
-
-            # Break loop over dataloader
-            if trainer.iteration >= trainer.total_iterations:
-                break
         
         # Break while loop
         if trainer.iteration >= trainer.total_iterations:

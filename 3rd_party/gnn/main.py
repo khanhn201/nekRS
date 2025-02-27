@@ -1,5 +1,5 @@
 """
-PyTorch DDP integrated with PyGeom for multi-node training
+PyTorch DDP training script for GNN-based surrogates from mesh data
 """
 #from __future__ import absolute_import, division, print_function, annotations
 import os

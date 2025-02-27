@@ -28,6 +28,7 @@ public:
     dfloat* data,
     unsigned long int num_rows,
     unsigned long int num_cols);
+  void checkpoint();
   void init_wallModel_train();
   void put_wallModel_data(int tstep);
   void run_wallModel(int tstep);

@@ -861,10 +861,10 @@ class Trainer:
 
         device_for_loading = 'cpu'
 
-        if self.cfg.model_task == "time_independent":
+        if self.cfg.time_dependency == "time_independent":
             data_dir = self.cfg.gnn_outputs_path
             data, stats = self.load_field_data(data_dir)
-        elif self.cfg.model_task == "time_dependent":
+        elif self.cfg.time_dependency == "time_dependent":
             data_dir = self.cfg.traj_data_path
             data, stats = self.load_trajectory(data_dir)
           
@@ -1010,12 +1010,12 @@ class Trainer:
         # Read new files
         output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
         input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
-        if self.cfg.model_task == "time_independent":
+        if self.cfg.time_dependency == "time_independent":
             for i in range(len(self.data_list),len(output_files)):
                 data_x = self.prepare_snapshot_data(input_files[i],3)
                 data_y = self.prepare_snapshot_data(output_files[i],1)
                 self.data_list.append({'x': data_x, 'y':data_y})
-        elif self.cfg.model_task == "time_dependent":
+        elif self.cfg.time_dependency == "time_dependent":
             for i in range(len(self.data_list),len(output_files)):
                 data_x_i = self.prepare_snapshot_data(input_files[i],3)
                 data_y_i = self.prepare_snapshot_data(output_files[i],3)
@@ -1213,7 +1213,60 @@ class Trainer:
             if self.timer_step < self.timer_step_max - 1:
                 self.update_timer_stats()
                 self.timer_step += 1
-        return loss 
+        return loss
+    
+    def inference_step(self, x) -> Tensor:
+        graph = self.data['graph']
+        stats = self.data['stats']
+        tic = time.time()
+        if WITH_CUDA or WITH_XPU:
+            x = x.to(self.device)
+            graph.edge_index = graph.edge_index.to(self.device)
+            graph.edge_weight = graph.edge_weight.to(self.device)
+            graph.edge_attr = graph.edge_attr.to(self.device)
+            graph.batch = graph.batch.to(self.device) if graph.batch is not None else None
+            graph.halo_info = graph.halo_info.to(self.device)
+            graph.node_degree = graph.node_degree.to(self.device)
+        if self.cfg.timers: self.update_timer('dataTransfer', self.timer_step, time.time() - tic)
+                
+        # re-allocate send buffer 
+        tic = time.time()
+        if self.cfg.halo_swap_mode != 'none':
+            for i in range(SIZE):
+                if self.cfg.halo_swap_mode == "all_to_all_opt_intel":
+                    self.buffer_send[i] = torch.zeros_like(self.buffer_send[i])
+                    self.buffer_recv[i] = torch.zeros_like(self.buffer_recv[i])
+                else:
+                    self.buffer_send[i] = torch.empty_like(self.buffer_send[i])
+                    self.buffer_recv[i] = torch.empty_like(self.buffer_recv[i])
+        else:
+            self.buffer_send = None
+            self.buffer_recv = None
+        if self.cfg.timers: self.update_timer('bufferInit', self.timer_step, time.time() - tic)
+        
+        # Prediction
+        tic = time.time()
+        x_scaled = (x[0] - stats['mean'])/(stats['std'] + SMALL)
+        out_gnn = self.model(x = x_scaled,
+                             edge_index = graph.edge_index,
+                             edge_attr = graph.edge_attr,
+                             edge_weight = graph.edge_weight,
+                             halo_info = graph.halo_info,
+                             mask_send = self.mask_send,
+                             mask_recv = self.mask_recv,
+                             buffer_send = self.buffer_send,
+                             buffer_recv = self.buffer_recv,
+                             neighboring_procs = self.neighboring_procs,
+                             SIZE = SIZE,
+                             batch = graph.batch)
+        if self.cfg.timers: self.update_timer('forwardPass', self.timer_step, time.time() - tic)
+
+        if self.cfg.use_residual: 
+            pred = out_gnn + x_scaled
+        else:
+            pred = out_gnn
+
+        return pred
 
     def test(self) -> dict:
         running_loss = torch.tensor(0.)

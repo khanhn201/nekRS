@@ -135,7 +135,15 @@ echo "# Trainer config" >> $CFILE
 echo "train:" >> $CFILE
 echo "    executable: \"${NEKRS_HOME}/3rd_party/gnn/main.py\"" >> $CFILE
 echo "    affinity: \"./${TAFF_FILE}\"" >> $CFILE
-echo "    arguments: \"backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False  model_task=time_dependent verbose=True\"" >> $CFILE
+echo "    arguments: \"backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False  time_dependency=time_dependent verbose=True\"" >> $CFILE
+echo "    copy_files: []" >> $CFILE
+echo "    link_files: [\"./${TAFF_FILE}\"]" >> $CFILE
+echo "" >> $CFILE
+echo "# Inference config" >> $CFILE
+echo "inference:" >> $CFILE
+echo "    executable: \"${NEKRS_HOME}/3rd_party/gnn/inference.py\"" >> $CFILE
+echo "    affinity: \"./${TAFF_FILE}\"" >> $CFILE
+echo "    arguments: \"model_task=inference rollout_steps=100 backend=ccl halo_swap_mode=none online=True client.db_nodes=${DB_NODES} consistency=False time_dependency=time_dependent verbose=True\"" >> $CFILE
 echo "    copy_files: []" >> $CFILE
 echo "    link_files: [\"./${TAFF_FILE}\"]" >> $CFILE
 

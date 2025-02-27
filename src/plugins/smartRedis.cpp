@@ -133,6 +133,29 @@ void smartredis_client_t::append_dataset_to_list(const std::string& dataset_name
     printf("Done\n");
 }
 
+// Checkpoint the solution
+void smartredis_client_t::checkpoint()
+{
+  if (_rank == 0)
+    printf("\nWriting checkpoint to DB ...\n");
+  MPI_Comm &comm = platform->comm.mpiComm;
+  unsigned long int num_dim = _nrs->mesh->dim;
+  unsigned long int field_offset = _nrs->fieldOffset;
+  std::string irank = "_rank_" + std::to_string(_rank);
+  std::string nranks = "_size_" + std::to_string(_size);
+
+  dfloat *U = new dfloat[num_dim * field_offset]();
+  dfloat *P = new dfloat[field_offset]();
+  _nrs->o_U.copyTo(U, num_dim * field_offset);
+  _nrs->o_P.copyTo(U, field_offset);
+
+  _client->put_tensor("checkpt_u"+irank+nranks, U, {field_offset,num_dim},
+                  SRTensorTypeDouble, SRMemLayoutContiguous);
+  _client->put_tensor("checkpt_p"+irank+nranks, P, {field_offset,1},
+                  SRTensorTypeDouble, SRMemLayoutContiguous);
+  MPI_Barrier(comm);
+}
+
 // Initialize training for the wall shear stress model
 void smartredis_client_t::init_wallModel_train()
 {

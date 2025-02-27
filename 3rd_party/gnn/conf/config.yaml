@@ -15,9 +15,11 @@ master_addr: none
 master_port: none
 
 # Modeling task
-model_task: "time_independent" # {time_independent, time_dependent}
+model_task: "train"
+time_dependency: "time_independent" # {time_independent, time_dependent}
 consistency: True
 use_residual: False
+rollout_steps: 0
 
 # learning rate schedule 
 phase1_steps: 100 
@@ -30,9 +32,6 @@ lr_phase23: 0.0001
 hidden_channels: 32
 n_mlp_hidden_layers: 5
 n_messagePassing_layers: 4
-
-# Number of training rollout steps
-rollout_steps: 1
 
 # Halo swap mode 
 halo_swap_mode : none

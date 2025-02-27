@@ -1,7 +1,7 @@
 """
 PyTorch DDP integrated with PyGeom for multi-node training
 """
-from __future__ import absolute_import, division, print_function, annotations
+#from __future__ import absolute_import, division, print_function, annotations
 import os
 import sys
 import socket
@@ -29,16 +29,16 @@ try:
 except ModuleNotFoundError as e:
     pass
 #torch.use_deterministic_algorithms(True)
-import torch.utils.data
-import torch.utils.data.distributed
+from torch.utils.data import DataLoader
+#import torch.utils.data.distributed
 from torch.cuda.amp.grad_scaler import GradScaler
-import torch.multiprocessing as mp
-import torch.distributions as tdist 
+#import torch.multiprocessing as mp
+#import torch.distributions as tdist 
 from torch.profiler import profile, record_function, ProfilerActivity
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torchvision import datasets, transforms
+#from torchvision import datasets, transforms
 
 import torch.distributed as dist
 import torch.distributed.nn as distnn
@@ -63,10 +63,6 @@ import gnn
 import graph_connectivity as gcon
 
 # Online client
-try:
-    from smartredis import Dataset
-except:
-    pass
 from client import OnlineClient
 
 log = logging.getLogger(__name__)
@@ -319,7 +315,8 @@ class Trainer:
         # ~~~~ Setup data 
         self.data_list = []
         self.data_traj = []
-        self.data = self.setup_data()
+        self.data = {}
+        self.setup_data()
         if RANK == 0: log.info('Done with setup_data')
 
         # ~~~~ Setup halo exchange masks
@@ -682,7 +679,7 @@ class Trainer:
         dist.gather(input_tensor, gather_list, dst=0)
         return gather_list
 
-    def load_data(self, file_name: Union[str, Dataset], 
+    def load_data(self, file_name, 
                   dtype: Optional[type] = np.float64, 
                   extension: Optional[str] = ""
     ):
@@ -859,6 +856,7 @@ class Trainer:
         return data_mean, data_std
 
     def load_field_data(self, data_dir: str):
+        if RANK == 0: log.info("Loading field data...")
         input_field = 'u' # velocity
         output_field = 'p' # pressure
 
@@ -872,18 +870,19 @@ class Trainer:
                             if (f'fld_{output_field}' in item) and (f'rank_{RANK}' in item)]
             output_files.sort(key=lambda x:int(x.split('.')[0].split('_')[-1]))
         else:
-            input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
             output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
+            input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
         assert len(input_files) == len(output_files), \
             'ERROR: found different number of input and output files'
 
         # populate dataset
-        if RANK == 0: log.info("Loading field data...")
         if not self.cfg.online:
             path_prepend = data_dir + '/'
             input_files = [path_prepend+input_file for input_file in input_files]
             output_files = [path_prepend+output_file for output_file in output_files]
-        for i in range(len(input_files)):
+        num_new_files = len(output_files) - len(self.data_list)
+        log.info(f'[{RANK}]: Found {num_new_files} new trajectory files in DB')
+        for i in range(len(self.data_list),num_new_files):
             data_x = self.prepare_snapshot_data(input_files[i], 3)
             data_y = self.prepare_snapshot_data(output_files[i], 1)
             self.data_list.append({'x': data_x, 'y':data_y})
@@ -935,6 +934,9 @@ class Trainer:
         return data, stats
 
     def load_trajectory(self, data_dir: str):
+        """Load a solution trajectory
+        """
+        COMM.Barrier() # sync helps here
         # read files
         if not self.cfg.online:
             files = os.listdir(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
@@ -957,11 +959,14 @@ class Trainer:
                         {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
                 )
         else:
-            COMM.Barrier() # sync helps
+            # Get the file list
             output_files = self.client.get_file_list(f'outputs_rank_{RANK}') # outputs must come first
             input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
-            print(f'[{RANK}]: Found {len(output_files)} trajectory files in DB',flush=True)
-            for i in range(len(output_files)):
+
+            # Load new files
+            num_new_files = len(output_files) - len(self.data_traj)
+            log.info(f'[{RANK}]: Found {num_new_files} new trajectory files in DB')
+            for i in range(len(self.data_traj),num_new_files):
                 data_x_i = self.prepare_snapshot_data(input_files[i])
                 data_y_i = self.prepare_snapshot_data(output_files[i])
                 self.data_traj.append(
@@ -993,6 +998,7 @@ class Trainer:
         if RANK == 0: log.info(f"Number of validation snapshots: {len(data['validation'])}")
 
         # Compute statistics for normalization
+        if (not already_computed_stats):
         stats = {'x': [], 'y': []} 
         if os.path.exists(data_dir + "/data_stats.npz"):
             if RANK == 0:
@@ -1120,7 +1126,7 @@ class Trainer:
             tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
             tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
             train_data_scaled.append(tdict)
-        train_loader = torch.utils.data.DataLoader(dataset=train_data_scaled,
+        train_loader = DataLoader(dataset=train_data_scaled,
                                      batch_size=self.cfg.batch_size,
                                      shuffle=True)
 
@@ -1131,11 +1137,11 @@ class Trainer:
                 tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
                 tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
                 val_data_scaled.append(tdict)
-        valid_loader = torch.utils.data.DataLoader(dataset=val_data_scaled,
+        valid_loader = DataLoader(dataset=val_data_scaled,
                                             batch_size=self.cfg.val_batch_size,
                                             shuffle=False)
 
-        return {
+        self.data =  {
             'train': {
                 'loader': train_loader,
                 'example': data['train'][0],
@@ -1152,6 +1158,44 @@ class Trainer:
             },
             'graph': data_graph
         }
+    
+    def update_data(self) -> None:
+        """Update the data loaders after reading more data
+        """
+        if RANK == 0:
+            log.info('In update_data...')
+        
+        if self.cfg.model_task == "time_independent":
+            data_dir = self.cfg.gnn_outputs_path
+            data, _ = self.load_field_data(data_dir)
+        elif self.cfg.model_task == "time_dependent":
+            data_dir = self.cfg.traj_data_path
+            data, _ = self.load_trajectory(data_dir)
+
+        train_data_scaled = []
+        stats = self.data['stats']
+        for item in  data['train']:
+            tdict = {}
+            tdict['x'] = (item['x'] - stats['x_mean'])/(stats['x_std'] + SMALL)
+            tdict['y'] = (item['y'] - stats['y_mean'])/(stats['y_std'] + SMALL)
+            train_data_scaled.append(tdict)
+        train_loader = DataLoader(dataset=train_data_scaled,
+                                     batch_size=self.cfg.batch_size,
+                                     shuffle=True)
+
+        val_data_scaled = data['validation'].copy()
+        if val_data_scaled[0]:
+            for item in  val_data_scaled:
+                tdict = {}
+                tdict['x'] = (item['x'] - stats['x_mean'])/(stats['x_std'] + SMALL)
+                tdict['y'] = (item['y'] - stats['y_mean'])/(stats['y_std'] + SMALL)
+                val_data_scaled.append(tdict)
+        valid_loader = DataLoader(dataset=val_data_scaled,
+                                            batch_size=self.cfg.val_batch_size,
+                                            shuffle=False)
+
+        self.data['train']['loader'] = train_loader
+        self.data['validation']['loader'] = valid_loader
 
     def setup_timers(self, n_record: int) -> dict:
         timers = {}
@@ -1451,12 +1495,13 @@ def train(cfg: DictConfig,
 
     # Training loop: 
     trainer.model.train()
-    train_loader = trainer.data['train']['loader']
+    #train_loader = trainer.data['train']['loader']
     val_loader = trainer.data['validation']['loader']
     num_batches = torch.tensor(len(train_loader))
     batch_times = []
     loss_window = deque(maxlen=10)
-    while True: 
+    while True:
+        train_loader = trainer.data['train']['loader']
         for bidx, data in enumerate(train_loader):
             t_step = time.time()
             loss = trainer.train_step(data)
@@ -1501,8 +1546,17 @@ def train(cfg: DictConfig,
             if trainer.iteration % cfg.ckptfreq == 0:
                 trainer.checkpoint()
 
+            # Update data loader when online training
+            if cfg.online:
+                if trainer.iteration % cfg.online_update_freq == 0:
+                    trainer.update_data()
+                    break
+
+            # Break loop over dataloader
             if trainer.iteration >= trainer.total_iterations:
                 break
+        
+        # Break while loop
         if trainer.iteration >= trainer.total_iterations:
             break
     

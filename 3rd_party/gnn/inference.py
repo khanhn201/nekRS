@@ -216,10 +216,8 @@ def inference_rollout(cfg: DictConfig,
     trainer = Trainer(cfg, client=client)
     trainer.writeGraphStatistics()
 
-    # Get initial condition
-    if not cfg.online:
-    else:
-
+    dataloader = trainer.data['train']['loader']
+    x = next(iter(dataloader))
     graph = trainer.data['graph']
     stats = trainer.data['stats']
     n_nodes_local = graph.n_nodes_local
@@ -227,13 +225,11 @@ def inference_rollout(cfg: DictConfig,
 
     # Roll-out loop
     trainer.model.eval()
-    x = data['x']
     with torch.no_grad():
         while True:
-            if RANK == 0: log.info(f"~~~~ ROLLOUT STEP {trainer.iteration+1} ~~~~")
             t_step = time.time()
             x = trainer.inference_step(x)
-            t_step = time.time() - t_step 
+            t_step = time.time() - t_step
             trainer.iteration += 1
 
             # Logging 
@@ -269,6 +265,7 @@ def inference_rollout(cfg: DictConfig,
             np.save(save_path + f"/x_{trainer.iteration}", x_gathered)
             np.save(save_path + f"/pos_{trainer.iteration}", pos_gathered)
     else:
+        client.put_array(f'checkpt_u_rank_{RANK}_size_{SIZE}',x.cpu().numpy())
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')

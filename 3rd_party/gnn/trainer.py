@@ -185,6 +185,7 @@ class Trainer:
         # ~~~~ Load model parameters if we are restarting from checkpoint
         self.iteration = 0
         if self.cfg.restart:
+            if RANK == 0: log.info(f'Loading model checkpoint from {self.ckpt_path}')
             ckpt = torch.load(self.ckpt_path)
             self.model.load_state_dict(ckpt['model_state_dict'])
             self.iteration = ckpt['iteration'] + 1
@@ -200,6 +201,10 @@ class Trainer:
 
                 self.loss_hist_train = loss_hist_train_new
                 self.loss_hist_val = loss_hist_val_new
+        if self.cfg.model_task == 'inference':
+            if RANK == 0: log.info(f'Loading model checkpoint from {self.model_path}')
+            ckpt = torch.load(self.model_path)
+            self.model.load_state_dict(ckpt['state_dict'])
 
         # ~~~~ Set loss function
         self.loss_fn = nn.MSELoss()
@@ -851,6 +856,43 @@ class Trainer:
                 stats['y'] = [x_mean, x_std]
                 if RANK == 0: log.info(f"Computed training data statistics for each node feature")
         return data, stats
+    
+    def load_initial_condition(self, data_dir: str):
+        """Load the initial condition to a solution trajectory
+        """
+        COMM.Barrier() # sync helps here
+        # read files
+        if not self.cfg.online:
+            files = os.listdir(data_dir+f"/data_rank_{RANK}_size_{SIZE}")
+            #files = [item for item in files_temp if 'p_step' not in item]
+            files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
+            file = files[0]
+            path_x = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + file
+            data_x = self.prepare_snapshot_data(path_x,3)
+            self.data_list.append({'x': data_x})
+        else:
+            # Get the initial condition
+            file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
+            data_x = self.prepare_snapshot_data(file)
+            self.data_list.append({'x': data_x})
+        data = {'train': [self.data_list[0]]}
+
+        # Compute statistics for normalization
+        stats = {'x': [], 'y': []} 
+        if 'stats' not in self.data.keys():
+            if os.path.exists(data_dir + "/data_stats.npz"):
+                if RANK == 0:
+                    npzfile = np.load(data_dir + "/data_stats.npz")
+                    stats['x'] = [npzfile['x_mean'], npzfile['x_std']]
+                    stats['y'] = [npzfile['y_mean'], npzfile['y_std']]
+                stats = COMM.bcast(stats, root=0)
+                if RANK == 0: log.info(f"Read training data statistics from {data_dir}/data_stats.npz")
+            else: 
+                x_mean, x_std = self.compute_statistics(data['train'],'x')
+                stats['x'] = [x_mean, x_std]
+                stats['y'] = [x_mean, x_std]
+                if RANK == 0: log.info(f"Computed training data statistics for each node feature")
+        return data, stats
  
     def setup_data(self):
         """
@@ -867,6 +909,9 @@ class Trainer:
         elif self.cfg.time_dependency == "time_dependent":
             data_dir = self.cfg.traj_data_path
             data, stats = self.load_trajectory(data_dir)
+        elif self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0:
+            data_dir = self.cfg.traj_data_path
+            data, stats = self.load_initial_condition(data_dir)
           
         # Get data in reduced format (non-overlapping)
         pos_reduced = self.data_reduced.pos
@@ -945,7 +990,8 @@ class Trainer:
         if (RANK == 0):
             log.info(f"{data_graph}")
             log.info(f"shape of x: {data['train'][0]['x'].shape}")
-            log.info(f"shape of y: {data['train'][0]['y'].shape}")
+            if not (self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0):
+                log.info(f"shape of y: {data['train'][0]['y'].shape}")
         
         # ~~~~ Populate the data sampler. No need to use torch_geometric sampler -- we assume we have fixed connectivity, and a "GRAPH" batch size of 1. We need a sampler only over the [x,y] pairs (i.e., the elements in data_list)
         # train_loader = torch_geometric.loader.DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=False)
@@ -956,7 +1002,8 @@ class Trainer:
         for item in  data['train']:
             tdict = {}
             tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
-            tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+            if not (self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0):
+                tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
             train_data_scaled.append(tdict)
         train_loader = DataLoader(dataset=train_data_scaled,
                                      batch_size=self.cfg.batch_size,
@@ -967,7 +1014,8 @@ class Trainer:
             for item in  val_data_scaled:
                 tdict = {}
                 tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
-                tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+                if not (self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0):
+                    tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
                 val_data_scaled.append(tdict)
         valid_loader = DataLoader(dataset=val_data_scaled,
                                             batch_size=self.cfg.val_batch_size,
@@ -1265,6 +1313,13 @@ class Trainer:
             pred = out_gnn + x_scaled
         else:
             pred = out_gnn
+
+        # Update timers
+        self.synchronize()
+        if self.cfg.timers:
+            if self.timer_step < self.timer_step_max - 1:
+                self.update_timer_stats()
+                self.timer_step += 1
 
         return pred
 

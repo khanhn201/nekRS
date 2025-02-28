@@ -72,7 +72,7 @@ class ShootingWorkflow():
             print(f"nekRS running on {self.cfg.run_args.sim_nodes} nodes:")
             print(self.sim_nodes)
             print(f"Training running on {self.cfg.run_args.ml_nodes} nodes:")
-            print(self.train_nodes,'\n')
+            print(self.train_nodes)
             print(f"Inference running on {self.cfg.run_args.ml_nodes} nodes:")
             print(self.inference_nodes,'\n',flush=True)
         else:
@@ -84,7 +84,7 @@ class ShootingWorkflow():
             print(self.sim_nodes,'\n',flush=True)
 
     def launchClusteredDB(self) -> None:
-        """Launch the clustered SmartSim Orchestrator
+        """Launch the clustered SmartSim Orchestrator (DB)
         """
         runArgs = {"np": 1, "ppn": 1, "cpu-bind": "numa"}
         kwargs = {
@@ -113,20 +113,128 @@ class ShootingWorkflow():
         print("Done\n", flush=True)
 
     def stopClusteredDB(self) -> None:
-        """Stop the clustered SmartSim Orchestrator
+        """Stop the clustered SmartSim Orchestrator (DB)
         """
-        print("Stopping the Orchestrator ...")
+        print("Stopping the clustered DB ...")
         self.exp.stop(self.db)
         print("Done\n", flush=True)
+
+    def launchPersistentCoDB(self) -> None:
+        """Launch a persistent colocated DB
+        """
+        cmd = "from time import sleep\n" + \
+              "from smartredis import Client\n" + \
+              "client = Client(cluster=False)\n" + \
+              "while True:\n" + \
+              "    if client.key_exists('stop-coDB'):\n" + \
+              "        print('Found stop-coDB',flush=True)\n" + \
+              "        break\n" + \
+              "    else:\n" + \
+              "        sleep(5)\n"
+        fname = '/tmp/launch_db.py'
+        with open(fname,'w') as f:
+            f.write(cmd)
+
+        coDB_manager_settings = PalsMpiexecSettings('python',
+                                           exe_args=fname,
+                                           run_args=None,
+                                           env_vars=None
+        )
+        coDB_manager_settings.set_tasks(self.num_nodes)
+        coDB_manager_settings.set_tasks_per_node(1)
+        coDB_manager_settings.set_hostlist(self.db_nodes)
+        coDB_manager_settings.set_cpu_binding_type("list:0")
+
+        kwargs = {
+            'maxclients': 100000,
+            'threads_per_queue': 4, # set to 4 for improved performance
+            'inter_op_parallelism': 1,
+            'intra_op_parallelism': 1,
+            'cluster-node-timeout': 30000,
+        }
+        self.coDB_model = self.exp.create_model(f"coDB", coDB_manager_settings)
+        db_bind = None if self.cfg.run_args.db_cpu_bind=='None' else self.cfg.run_args.db_cpu_bind
+        if (self.cfg.database.network_interface=='uds'):
+            self.coDB_model.colocate_db_uds(
+                    db_cpus=self.cfg.run_args.dbprocs_pn,
+                    custom_pinning=db_bind,
+                    debug=False,
+                    **kwargs
+            )
+        else:
+            self.coDB_model.colocate_db_tcp(
+                    port=self.port,
+                    ifname=self.cfg.database.network_interface,
+                    db_cpus=self.cfg.run_args.dbprocs_pn,
+                    custom_pinning=db_bind,
+                    debug=False,
+                    **kwargs
+            )
+
+        print("Launching colocated DB ... ")
+        self.exp.generate(self.coDB_model, overwrite=True)
+        self.exp.start(self.coDB_model, block=False, summary=False, monitor=False)
+        print("Done\n", flush=True)
+
+    def stopPersistentCoDB(self) -> None:
+        """Stop a persistent colocated DB
+        """
+        cmd = "from smartredis import Client\n" + \
+              "import os\n" + \
+              "import numpy as np\n" + \
+              "SSDB = os.getenv('SSDB')\n" + \
+              "client = Client(address=SSDB,cluster=False)\n" + \
+              "client.put_tensor('stop-coDB',np.array([1]))\n"
+        fname = '/tmp/stop_db.py'
+        with open(fname,'w') as f:
+            f.write(cmd)
+
+        SSDB = self.nekrs_model.run_settings.env_vars['SSDB']
+        env_vars = {'SSDB': SSDB}
+        stop_settings = PalsMpiexecSettings('python',
+                                           exe_args=fname,
+                                           run_args=None,
+                                           env_vars=env_vars
+        )
+        stop_settings.set_tasks(self.num_nodes)
+        stop_settings.set_tasks_per_node(1)
+        stop_settings.set_hostlist(self.db_nodes)
+
+        print("Stopping the colocated DB ...")
+        stop_model = self.exp.create_model(f"stop_coDB", stop_settings)
+        self.exp.generate(stop_model, overwrite=True)
+        self.exp.start(stop_model, block=True, summary=False)
+        print("Done\n", flush=True)
+
+    def launchDatabase(self) -> None:
+        """Launch the database
+        """
+        if self.cfg.database.deployment == 'colocated':
+            self.launchPersistentCoDB()
+        elif self.cfg.database.deployment == 'clustered':
+            self.launchClusteredDB()
+
+    def stopDatabase(self) -> None:
+        """Stop the database
+        """
+        print('trying to stop the db',flush=True)
+        if self.cfg.database.deployment == 'colocated':
+            self.stopPersistentCoDB()
+        elif self.cfg.database.deployment == 'clustered':
+            self.stopClusteredDB()
 
     def launchNekRS(self) -> None:
         """Launch the nekRS simulation
         """
+        env_vars = None
+        if (self.cfg.database.deployment=='colocated'):
+            SSDB = self.coDB_model.run_settings.env_vars['SSDB']
+            env_vars = {'SSDB': SSDB}
         client_exe = self.cfg.sim.executable
         nrs_settings = PalsMpiexecSettings(client_exe,
                                            exe_args=None,
                                            run_args=None,
-                                           env_vars=None
+                                           env_vars=env_vars
         )
         nrs_settings.set_tasks(self.cfg.run_args.simprocs)
         nrs_settings.set_tasks_per_node(self.cfg.run_args.simprocs_pn)
@@ -137,34 +245,8 @@ class ShootingWorkflow():
             nrs_settings.set_gpu_affinity_script(self.cfg.sim.affinity,
                                                  self.cfg.run_args.simprocs_pn)
         
-        self.nekrs_model = self.exp.create_model(f"nekrs_{self.fine_tune_iter}", nrs_settings)
-        if (self.cfg.database.deployment=='colocated'):
-            kwargs = {
-                'maxclients': 100000,
-                'threads_per_queue': 4, # set to 4 for improved performance
-                'inter_op_parallelism': 1,
-                'intra_op_parallelism': 1,
-                'cluster-node-timeout': 30000,
-                }
-            db_bind = None if self.cfg.run_args.db_cpu_bind=='None' else self.cfg.run_args.db_cpu_bind
-            if (self.cfg.database.network_interface=='uds'):
-                self.nekrs_model.colocate_db_uds(
-                        db_cpus=self.cfg.run_args.dbprocs_pn,
-                        custom_pinning=db_bind,
-                        debug=False,
-                        **kwargs
-                )
-            else:
-                self.nekrs_model.colocate_db_tcp(
-                        port=self.port,
-                        ifname=self.cfg.database.network_interface,
-                        db_cpus=self.cfg.run_args.dbprocs_pn,
-                        custom_pinning=db_bind,
-                        debug=False,
-                        **kwargs
-                )
-        
         print("Launching nekRS ...")
+        self.nekrs_model = self.exp.create_model(f"nekrs_{self.fine_tune_iter}", nrs_settings)
         if len(self.cfg.sim.copy_files)>0 or len(self.cfg.sim.link_files)>0:
             self.nekrs_model.attach_generator_files(
                 to_copy=list(self.cfg.sim.copy_files), 
@@ -219,6 +301,7 @@ class ShootingWorkflow():
             env_vars = {'SSDB': SSDB}
         ml_exe = self.cfg.inference.executable
         ml_exe = ml_exe + ' ' + self.cfg.inference.arguments
+        ml_exe = ml_exe + f' model_dir={os.getcwd()}/nekRS-ML/train_{self.self.fine_tune_iter}/saved_models'
         ml_settings = PalsMpiexecSettings(
                            'python',
                            exe_args=ml_exe,
@@ -263,22 +346,19 @@ class ShootingWorkflow():
         """Runner function for the workflow responsible for alternating
         between fine-tuning and inference and deploying the components
         """
-        # Launch clustered DB
-        if (self.cfg.database.deployment=='clustered'):
-            self.launchClusteredDB()
+        # Launch the DB
+        self.launchDatabase()
 
         # Start the workflow loop
-        while True:
-            # Fine-tune model
-            self.fineTune()
+        #while True:
+        # Fine-tune model
+        self.fineTune()
 
-            # Roll-out model
-            self.rollout()
-            break
+        # Roll-out model
+        self.rollout()
         
-        # Stop clustered DB
-        if (self.cfg.database.deployment=='clustered'):
-            self.stopClusteredDB()
+        # Stop DB
+        self.stopDatabase()
 
 
 ## Main function

@@ -25,6 +25,7 @@ class ShootingWorkflow():
         self.train_nodes = ''
         self.inference_nodes = ''
         self.fine_tune_iter = -1
+        self.inference_iter = -1
 
         # Parse the node list from the scheduler
         self.parseNodeList()
@@ -36,6 +37,7 @@ class ShootingWorkflow():
         self.db = None
         self.nekrs_model = None
         self.train_model = None
+        self.infer_model = None
         self.port = cfg.database.port
         self.exp = Experiment(self.cfg.database.exp_name, launcher=self.cfg.database.launcher)
 
@@ -64,17 +66,21 @@ class ShootingWorkflow():
             self.train_nodes = ','.join(self.nodelist[self.cfg.run_args.sim_nodes + self.cfg.run_args.db_nodes: \
                                 self.cfg.run_args.sim_nodes + self.cfg.run_args.db_nodes + \
                                 self.cfg.run_args.ml_nodes])
+            self.inference_nodes = str(self.train_nodes)
             print(f"Database running on {self.cfg.run_args.db_nodes} nodes:")
             print(self.db_nodes)
             print(f"nekRS running on {self.cfg.run_args.sim_nodes} nodes:")
             print(self.sim_nodes)
             print(f"Training running on {self.cfg.run_args.ml_nodes} nodes:")
-            print(self.train_nodes,'\n',flush=True)
+            print(self.train_nodes,'\n')
+            print(f"Inference running on {self.cfg.run_args.ml_nodes} nodes:")
+            print(self.inference_nodes,'\n',flush=True)
         else:
             self.sim_nodes = ','.join(self.nodelist)
-            self.db_nodes = self.sim_nodes
-            self.train_nodes = self.sim_nodes
-            print(f"Database, nekRS and training running on {self.cfg.run_args.sim_nodes} nodes:")
+            self.db_nodes = str(self.sim_nodes)
+            self.train_nodes = str(self.sim_nodes)
+            self.inference_nodes = str(self.sim_nodes)
+            print(f"Database, nekRS, training and inference running on {self.cfg.run_args.sim_nodes} nodes:")
             print(self.sim_nodes,'\n',flush=True)
 
     def launchClusteredDB(self) -> None:
@@ -204,12 +210,54 @@ class ShootingWorkflow():
         self.exp.start(self.train_model, block=True, summary=False)
         print("Done\n", flush=True)
 
+    def launchInference(self) -> None:
+        """Launch the GNN model for inference
+        """
+        env_vars = None
+        if (self.cfg.database.deployment=='colocated'):
+            SSDB = self.nekrs_model.run_settings.env_vars['SSDB']
+            env_vars = {'SSDB': SSDB}
+        ml_exe = self.cfg.inference.executable
+        ml_exe = ml_exe + ' ' + self.cfg.inference.arguments
+        ml_settings = PalsMpiexecSettings(
+                           'python',
+                           exe_args=ml_exe,
+                           run_args=None,
+                           env_vars=env_vars,
+        )
+        ml_settings.set_tasks(self.cfg.run_args.mlprocs)
+        ml_settings.set_tasks_per_node(self.cfg.run_args.mlprocs_pn)
+        ml_settings.set_hostlist(self.train_nodes)
+        ml_settings.set_cpu_binding_type(self.cfg.run_args.ml_cpu_bind)
+        if (self.cfg.train.affinity):
+            skip = 0 if self.cfg.database.deployment=='clustered' else self.cfg.run_args.simprocs_pn
+            ml_settings.set_gpu_affinity_script(self.cfg.train.affinity,
+                                                self.cfg.run_args.mlprocs_pn,
+                                                skip
+            )
+
+        print("Launching GNN inference ... ")
+        self.infer_model = self.exp.create_model(f"infer_{self.inference_iter}", ml_settings)
+        if len(self.cfg.inference.copy_files)>0 or len(self.cfg.inference.link_files)>0:
+            self.infer_model.attach_generator_files(to_copy=list(self.cfg.inference.copy_files), 
+                                            to_symlink=list(self.cfg.inference.link_files)
+            )
+        self.exp.generate(self.infer_model, overwrite=True)
+        self.exp.start(self.infer_model, block=True, summary=False)
+        print("Done\n", flush=True)
+
     def fineTune(self) -> None:
         """Fine-tune the GNN model from the nekRS simulation
         """
         self.fine_tune_iter += 1
         self.launchNekRS()
         self.launchTrainer() # blocks code progress
+
+    def rollout(self) -> None:
+        """Roll-out the surrogate model and advance the solution
+        """
+        self.inference_iter += 1
+        self.launchInference()
 
     def runner(self) -> None:
         """Runner function for the workflow responsible for alternating
@@ -223,6 +271,9 @@ class ShootingWorkflow():
         while True:
             # Fine-tune model
             self.fineTune()
+
+            # Roll-out model
+            self.rollout()
             break
         
         # Stop clustered DB

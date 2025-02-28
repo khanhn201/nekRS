@@ -225,11 +225,15 @@ def inference_rollout(cfg: DictConfig,
 
     # Roll-out loop
     trainer.model.eval()
+    local_times = []
+    local_throughputs = []
     with torch.no_grad():
         while True:
             t_step = time.time()
             x = trainer.inference_step(x)
             t_step = time.time() - t_step
+            local_times.append(t_step)
+            local_throughputs.append(n_nodes_local/t_step/1.0e6)
             trainer.iteration += 1
 
             # Logging 
@@ -237,6 +241,7 @@ def inference_rollout(cfg: DictConfig,
                 summary = ' '.join([
                     f'[STEP {trainer.iteration}]',
                     f't_step={t_step:.4g}sec',
+                    f'throughput={n_nodes_local/t_step/1.0e6:.4g}nodes/sec'
                 ])
                 log.info(summary)
 
@@ -266,6 +271,18 @@ def inference_rollout(cfg: DictConfig,
             np.save(save_path + f"/pos_{trainer.iteration}", pos_gathered)
     else:
         client.put_array(f'checkpt_u_rank_{RANK}_size_{SIZE}',x.cpu().numpy())
+
+    # Print timing and FOM
+    n_nodes_global = COMM.reduce(n_nodes_local)
+    global_times = COMM.gather(local_times, root=0)
+    global_throughputs = COMM.gather(local_throughputs, root=0)
+    global_parallel_throughputs = COMM.reduce(local_throughputs, root=0)
+    if RANK == 0:
+        log.info('Performance metrics:')
+        log.info(f'Total number of graph nodes: {n_nodes_global}')
+        log.info(f'Step time [sec]: min={min(global_times)}, max={min(global_times)}, mean={sum(global_times)/len(global_times)}')
+        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs)}, max={min(global_throughputs)}, mean={sum(global_throughputs)/len(global_throughputs)}')
+        log.info(f'Parallel throughput [million nodes/sec]: min={min(global_parallel_throughputs)}, max={min(global_parallel_throughputs)}, mean={sum(global_parallel_throughputs)/len(global_parallel_throughputs)}')
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')

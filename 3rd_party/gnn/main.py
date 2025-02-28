@@ -105,6 +105,8 @@ def train(cfg: DictConfig,
     # Training loop: 
     trainer.model.train()
     loss_window = deque(maxlen=10)
+    local_times = []
+    local_throughputs = []
     while True:
         train_loader = trainer.data['train']['loader']
         val_loader = trainer.data['validation']['loader']
@@ -112,6 +114,8 @@ def train(cfg: DictConfig,
             t_step = time.time()
             loss = trainer.train_step(data)
             t_step = time.time() - t_step 
+            local_times.append(t_step)
+            local_throughputs.append(n_nodes_local/t_step/1.0e6)
             trainer.loss_hist_train[trainer.iteration] = loss.item() 
             loss_window.append(loss.item())
             running_loss = sum(loss_window) / len(loss_window)
@@ -181,6 +185,18 @@ def train(cfg: DictConfig,
         log.info(f"[RANK {RANK}] -- Telling NekRS to quit ...")
         arrMLrun = np.int32(np.zeros(1))
         client.put_array('check-run',arrMLrun)
+
+    # Print timing and FOM
+    n_nodes_global = COMM.reduce(n_nodes_local)
+    global_times = COMM.gather(local_times, root=0)
+    global_throughputs = COMM.gather(local_throughputs, root=0)
+    global_parallel_throughputs = COMM.reduce(local_throughputs, root=0)
+    if RANK == 0:
+        log.info('Performance metrics:')
+        log.info(f'Total number of graph nodes: {n_nodes_global}')
+        log.info(f'Step time [sec]: min={min(global_times)}, max={min(global_times)}, mean={sum(global_times)/len(global_times)}')
+        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs)}, max={min(global_throughputs)}, mean={sum(global_throughputs)/len(global_throughputs)}')
+        log.info(f'Parallel throughput [million nodes/sec]: min={min(global_parallel_throughputs)}, max={min(global_parallel_throughputs)}, mean={sum(global_parallel_throughputs)/len(global_parallel_throughputs)}')
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')

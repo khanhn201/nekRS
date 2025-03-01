@@ -176,8 +176,8 @@ class Trainer:
 
         # ~~~~ Set model and checkpoint savepaths 
         try:
-            self.ckpt_path = cfg.ckpt_dir + self.model.get_save_header() + '.tar'
-            self.model_path = cfg.model_dir + self.model.get_save_header() + '.tar'
+            self.ckpt_path = cfg.ckpt_dir + '/' + self.model.get_save_header() + '.tar'
+            self.model_path = cfg.model_dir + '/' + self.model.get_save_header() + '.tar'
         except (AttributeError) as e:
             self.ckpt_path = cfg.ckpt_dir + 'checkpoint.tar'
             self.model_path = cfg.model_dir + 'model.tar'
@@ -869,13 +869,13 @@ class Trainer:
             file = files[0]
             path_x = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + file
             data_x = self.prepare_snapshot_data(path_x,3)
-            self.data_list.append({'x': data_x})
+            self.data_list.append({'x': data_x}, {'y': data_x})
         else:
             # Get the initial condition
             file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
             data_x = self.prepare_snapshot_data(file)
-            self.data_list.append({'x': data_x})
-        data = {'train': [self.data_list[0]]}
+            self.data_list.append({'x': data_x}, {'y': data_x})
+        data = {'train': [self.data_list[0]], 'validation': [{}]}
 
         # Compute statistics for normalization
         stats = {'x': [], 'y': []} 
@@ -903,10 +903,10 @@ class Trainer:
 
         device_for_loading = 'cpu'
 
-        if self.cfg.time_dependency == "time_independent":
+        if self.cfg.model_task == 'train' and self.cfg.time_dependency == "time_independent":
             data_dir = self.cfg.gnn_outputs_path
             data, stats = self.load_field_data(data_dir)
-        elif self.cfg.time_dependency == "time_dependent":
+        elif self.cfg.model_task == 'train' and self.cfg.time_dependency == "time_dependent":
             data_dir = self.cfg.traj_data_path
             data, stats = self.load_trajectory(data_dir)
         elif self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0:
@@ -948,11 +948,11 @@ class Trainer:
             self.data_reduced.node_degree = torch.zeros(1)
 
         # Populate data object 
-        data_x_reduced = data['train'][0]['x']
-        data_y_reduced = data['train'][0]['y']
-        n_features_in = data_x_reduced.shape[1]
-        n_features_out = data_y_reduced.shape[1]
-        n_nodes = self.data_reduced.pos.shape[0]
+        #data_x_reduced = data['train'][0]['x']
+        #data_y_reduced = data['train'][0]['y']
+        #n_features_in = data_x_reduced.shape[1]
+        #n_features_out = data_y_reduced.shape[1]
+        #n_nodes = self.data_reduced.pos.shape[0]
         
         # Get dictionary 
         reduced_graph_dict = self.data_reduced.to_dict()
@@ -990,8 +990,7 @@ class Trainer:
         if (RANK == 0):
             log.info(f"{data_graph}")
             log.info(f"shape of x: {data['train'][0]['x'].shape}")
-            if not (self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0):
-                log.info(f"shape of y: {data['train'][0]['y'].shape}")
+            log.info(f"shape of y: {data['train'][0]['y'].shape}")
         
         # ~~~~ Populate the data sampler. No need to use torch_geometric sampler -- we assume we have fixed connectivity, and a "GRAPH" batch size of 1. We need a sampler only over the [x,y] pairs (i.e., the elements in data_list)
         # train_loader = torch_geometric.loader.DataLoader(train_dataset, batch_size=self.cfg.batch_size, shuffle=False)
@@ -1002,8 +1001,7 @@ class Trainer:
         for item in  data['train']:
             tdict = {}
             tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
-            if not (self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0):
-                tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+            tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
             train_data_scaled.append(tdict)
         train_loader = DataLoader(dataset=train_data_scaled,
                                      batch_size=self.cfg.batch_size,
@@ -1014,8 +1012,7 @@ class Trainer:
             for item in  val_data_scaled:
                 tdict = {}
                 tdict['x'] = (item['x'] - stats['x'][0])/(stats['x'][1] + SMALL)
-                if not (self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0):
-                    tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
+                tdict['y'] = (item['y'] - stats['y'][0])/(stats['y'][1] + SMALL)
                 val_data_scaled.append(tdict)
         valid_loader = DataLoader(dataset=val_data_scaled,
                                             batch_size=self.cfg.val_batch_size,

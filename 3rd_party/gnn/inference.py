@@ -217,7 +217,8 @@ def inference_rollout(cfg: DictConfig,
     trainer.writeGraphStatistics()
 
     dataloader = trainer.data['train']['loader']
-    x = next(iter(dataloader))
+    data = next(iter(dataloader))
+    x = data['x']
     graph = trainer.data['graph']
     stats = trainer.data['stats']
     n_nodes_local = graph.n_nodes_local

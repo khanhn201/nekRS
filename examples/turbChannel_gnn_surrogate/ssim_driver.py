@@ -301,7 +301,7 @@ class ShootingWorkflow():
             env_vars = {'SSDB': SSDB}
         ml_exe = self.cfg.inference.executable
         ml_exe = ml_exe + ' ' + self.cfg.inference.arguments
-        ml_exe = ml_exe + f' model_dir={os.getcwd()}/nekRS-ML/train_{self.self.fine_tune_iter}/saved_models'
+        ml_exe = ml_exe + f' model_dir={os.getcwd()}/nekRS-ML/train_{self.fine_tune_iter}/saved_models/'
         ml_settings = PalsMpiexecSettings(
                            'python',
                            exe_args=ml_exe,

@@ -869,12 +869,12 @@ class Trainer:
             file = files[0]
             path_x = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + file
             data_x = self.prepare_snapshot_data(path_x,3)
-            self.data_list.append({'x': data_x}, {'y': data_x})
+            self.data_list.append({'x': data_x, 'y': data_x})
         else:
             # Get the initial condition
             file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
             data_x = self.prepare_snapshot_data(file)
-            self.data_list.append({'x': data_x}, {'y': data_x})
+            self.data_list.append({'x': data_x, 'y': data_x})
         data = {'train': [self.data_list[0]], 'validation': [{}]}
 
         # Compute statistics for normalization

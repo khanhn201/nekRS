@@ -114,8 +114,9 @@ def train(cfg: DictConfig,
             t_step = time.time()
             loss = trainer.train_step(data)
             t_step = time.time() - t_step 
-            local_times.append(t_step)
-            local_throughputs.append(n_nodes_local/t_step/1.0e6)
+            if trainer.iteration > 0:
+                local_times.append(t_step)
+                local_throughputs.append(n_nodes_local/t_step/1.0e6)
             trainer.loss_hist_train[trainer.iteration] = loss.item() 
             loss_window.append(loss.item())
             running_loss = sum(loss_window) / len(loss_window)
@@ -194,9 +195,9 @@ def train(cfg: DictConfig,
     if RANK == 0:
         log.info('Performance metrics:')
         log.info(f'Total number of graph nodes: {n_nodes_global}')
-        log.info(f'Step time [sec]: min={min(global_times)}, max={min(global_times)}, mean={sum(global_times)/len(global_times)}')
-        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs)}, max={min(global_throughputs)}, mean={sum(global_throughputs)/len(global_throughputs)}')
-        log.info(f'Parallel throughput [million nodes/sec]: min={min(global_parallel_throughputs)}, max={min(global_parallel_throughputs)}, mean={sum(global_parallel_throughputs)/len(global_parallel_throughputs)}')
+        log.info(f'Step time [sec]: min={min(global_times[0])}, max={max(global_times[0])}, mean={sum(global_times[0])/len(global_times[0])}')
+        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs[0])}, max={max(global_throughputs[0])}, mean={sum(global_throughputs[0])/len(global_throughputs[0])}')
+        log.info(f'Parallel throughput [million nodes/sec]: min={min(global_parallel_throughputs[0])}, max={max(global_parallel_throughputs[0])}, mean={sum(global_parallel_throughputs[0])/len(global_parallel_throughputs[0])}')
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')

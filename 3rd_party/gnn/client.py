@@ -78,3 +78,10 @@ class OnlineClient:
             # Grab list of datasets
             file_list = self.client.get_datasets_from_list(list_name)
         return file_list
+    
+    def get_file_list_length(self, list_name: str) -> int:
+        """Get the length of the file list
+        """
+        if self.backend == "smartredis":
+            return self.client.get_list_length(list_name)
+

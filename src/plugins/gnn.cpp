@@ -215,11 +215,11 @@ void gnn_t::gnnWriteDB(smartredis_client_t* client)
 
     // Writing some graph statistics
     client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
+                    SRTensorTypeInt32, SRMemLayoutContiguous);
     client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
+                    SRTensorTypeInt32, SRMemLayoutContiguous);
     client->_client->put_tensor("N" + irank + nranks, &N, {1},
-                    SRTensorTypeInt64, SRMemLayoutContiguous);
+                    SRTensorTypeInt32, SRMemLayoutContiguous);
 
     MPI_Barrier(comm);
     if (verbose) printf("[RANK %d] -- done sending graph data to DB \n", rank);

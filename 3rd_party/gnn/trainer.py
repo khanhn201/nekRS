@@ -1291,7 +1291,8 @@ class Trainer:
         
         # Prediction
         tic = time.time()
-        x_scaled = (x[0] - stats['mean'])/(stats['std'] + SMALL)
+        #x_scaled = (x[0] - stats['mean'])/(stats['std'] + SMALL)
+        x_scaled = x[0] if len(x.shape) > 2 else x
         out_gnn = self.model(x = x_scaled,
                              edge_index = graph.edge_index,
                              edge_attr = graph.edge_attr,

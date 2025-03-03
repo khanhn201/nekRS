@@ -1,7 +1,6 @@
 """
 PyTorch DDP training script for GNN-based surrogates from mesh data
 """
-#from __future__ import absolute_import, division, print_function, annotations
 import os
 import logging
 from collections import deque
@@ -188,16 +187,7 @@ def train(cfg: DictConfig,
         client.put_array('check-run',arrMLrun)
 
     # Print timing and FOM
-    n_nodes_global = COMM.reduce(n_nodes_local)
-    global_times = COMM.gather(local_times, root=0)
-    global_throughputs = COMM.gather(local_throughputs, root=0)
-    global_parallel_throughputs = COMM.reduce(local_throughputs, root=0)
-    if RANK == 0:
-        log.info('Performance metrics:')
-        log.info(f'Total number of graph nodes: {n_nodes_global}')
-        log.info(f'Step time [sec]: min={min(global_times[0])}, max={max(global_times[0])}, mean={sum(global_times[0])/len(global_times[0])}')
-        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs[0])}, max={max(global_throughputs[0])}, mean={sum(global_throughputs[0])/len(global_throughputs[0])}')
-        log.info(f'Parallel throughput [million nodes/sec]: min={min(global_parallel_throughputs[0])}, max={max(global_parallel_throughputs[0])}, mean={sum(global_parallel_throughputs[0])/len(global_parallel_throughputs[0])}')
+    utils.print_fom(n_nodes_local, local_times, local_throughputs)
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')

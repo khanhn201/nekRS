@@ -217,7 +217,6 @@ class ShootingWorkflow():
     def stopDatabase(self) -> None:
         """Stop the database
         """
-        print('trying to stop the db',flush=True)
         if self.cfg.database.deployment == 'colocated':
             self.stopPersistentCoDB()
         elif self.cfg.database.deployment == 'clustered':

@@ -5,11 +5,13 @@ Utilities for training and inferencing
 import sys
 from typing import Optional, Union, Callable
 import time
+import logging
 import numpy as np
 import torch
 import torch.distributed as dist
 
 Tensor = torch.Tensor
+log = logging.getLogger(__name__)
 
 try:
     import mpi4py
@@ -122,3 +124,22 @@ def average_list_times(a_list):
     COMM.Reduce(np.array(a_list),sum_across_ranks,op=MPI.SUM)
     avg = np.mean(sum_across_ranks)
     return avg
+
+def print_fom(n_nodes_local: int, local_times: list, local_throughputs: list):
+    n_nodes_global = COMM.reduce(n_nodes_local)
+    global_times = COMM.gather(local_times, root=0)
+    global_throughputs = COMM.gather(local_throughputs, root=0)
+    if RANK == 0:
+        global_parallel_throughputs = np.zeros(len(local_throughputs))
+    else:
+        global_parallel_throughputs = None
+    COMM.Reduce(np.array(local_throughputs),
+                         global_parallel_throughputs, 
+                         op=MPI.SUM, root=0
+    )
+    if RANK == 0:
+        log.info('Performance metrics:')
+        log.info(f'Total number of graph nodes: {n_nodes_global}')
+        log.info(f'Step time [sec]: min={min(global_times[0]):.4g}, max={max(global_times[0]):.4g}, mean={sum(global_times[0])/len(global_times[0]):.4g}')
+        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs[0]):.4g}, max={max(global_throughputs[0]):.4g}, mean={sum(global_throughputs[0])/len(global_throughputs[0]):.4g}')
+        log.info(f'Parallel throughput [million nodes/sec]: min={np.amin(global_parallel_throughputs):.4g}, max={np.amax(global_parallel_throughputs):.4g}, mean={np.mean(global_parallel_throughputs):.4g}')

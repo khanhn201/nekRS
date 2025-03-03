@@ -256,11 +256,12 @@ def inference_rollout(cfg: DictConfig,
                 break
     
     # Save solution checkpoint 
+    x = x.cpu()
     x = x * stats['x_std'] + stats['x_mean']
     if not cfg.online:
         # Gather the prediction and target with mpi4py gatherv
         if RANK == 0: log.info("Gathering data...")
-        x_gathered = gather_wrapper(x.cpu().numpy())
+        x_gathered = gather_wrapper(x.numpy())
         pos_gathered = gather_wrapper(pos.cpu().numpy())
 
         # Write the data
@@ -272,19 +273,10 @@ def inference_rollout(cfg: DictConfig,
             np.save(save_path + f"/x_{trainer.iteration}", x_gathered)
             np.save(save_path + f"/pos_{trainer.iteration}", pos_gathered)
     else:
-        client.put_array(f'checkpt_u_rank_{RANK}_size_{SIZE}',x.cpu().numpy())
+        client.put_array(f'checkpt_u_rank_{RANK}_size_{SIZE}',x.numpy())
 
     # Print timing and FOM
-    n_nodes_global = COMM.reduce(n_nodes_local)
-    global_times = COMM.gather(local_times, root=0)
-    global_throughputs = COMM.gather(local_throughputs, root=0)
-    global_parallel_throughputs = COMM.reduce(local_throughputs, root=0)
-    if RANK == 0:
-        log.info('Performance metrics:')
-        log.info(f'Total number of graph nodes: {n_nodes_global}')
-        log.info(f'Step time [sec]: min={min(global_times[0])}, max={max(global_times[0])}, mean={sum(global_times[0])/len(global_times[0])}')
-        log.info(f'Step throughput [million nodes/sec]: min={min(global_throughputs[0])}, max={max(global_throughputs[0])}, mean={sum(global_throughputs[0])/len(global_throughputs[0])}')
-        log.info(f'Parallel throughput [million nodes/sec]: min={min(global_parallel_throughputs[0])}, max={max(global_parallel_throughputs[0])}, mean={sum(global_parallel_throughputs[0])/len(global_parallel_throughputs[0])}')
+    utils.print_fom(n_nodes_local, local_times, local_throughputs)
 
 
 @hydra.main(version_base=None, config_path='./conf', config_name='config')

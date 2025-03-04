@@ -49,7 +49,6 @@ echo "module list" >> $SFILE
 
 echo "export NEKRS_HOME=$NEKRS_HOME" >>$SFILE
 echo "export NEKRS_GPU_MPI=$NEKRS_GPU_MPI" >>$SFILE
-echo "export MPIR_CVAR_ENABLE_GPU=$NEKRS_GPU_MPI" >> $SFILE
 
 echo "export OCCA_DPCPP_COMPILER_FLAGS=\"$OCCA_DPCPP_COMPILER_FLAGS\"" >> $SFILE
 

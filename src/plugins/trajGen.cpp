@@ -177,3 +177,94 @@ void trajGen_t::trajGenWriteDB(smartredis_client_t* client,
     }
 }
 #endif
+
+void trajGen_t::trajGenWriteADIOS(adios_client_t* client, 
+    dfloat time, 
+    int tstep, 
+    const std::string& field_name) 
+{
+    bool send_inputs = false;
+    bool send_outputs = false;
+    if (skip == 0) {
+        if (tstep % dt_factor == 0) {
+            send_inputs = true;
+            send_outputs = true;
+        }
+    } else {
+        if (tstep % skip == 0) {
+            send_inputs = true;
+        }
+        if (tstep % skip == dt_factor) {
+            send_outputs = true;
+        }
+    }
+
+    if (send_inputs or send_outputs) {
+        MPI_Comm &comm = platform->comm.mpiComm;
+        unsigned long _size = size;
+        unsigned long _rank = rank;
+        unsigned long num_dim = nrs->mesh->dim;
+        unsigned long field_offset = nrs->fieldOffset;
+        auto uIn = client->_io.DefineVariable<dfloat>("in_u_step_" + std::to_string(tstep), 
+                                                         {_size * field_offset * num_dim}, 
+                                                         {_rank * field_offset * num_dim}, 
+                                                         {field_offset * num_dim});
+        auto pIn = client->_io.DefineVariable<dfloat>("in_p_step_" + std::to_string(tstep), 
+                                                         {_size * field_offset}, 
+                                                         {_rank * field_offset}, 
+                                                         {field_offset});
+        auto uOut = client->_io.DefineVariable<dfloat>("out_u_step_" + std::to_string(tstep), 
+                                                         {_size * field_offset * num_dim}, 
+                                                         {_rank * field_offset * num_dim}, 
+                                                         {field_offset * num_dim});
+        auto pOut = client->_io.DefineVariable<dfloat>("out_p_step_" + std::to_string(tstep), 
+                                                         {_size * field_offset}, 
+                                                         {_rank * field_offset}, 
+                                                         {field_offset});
+
+        // print stuff
+        if (rank == 0 and verbose) {
+            printf("[TRAJ WRITE ADIOS] -- Writing data at tstep %d and physical time %g \n", tstep, time);
+        }
+
+        // write data
+        adios2::Engine solWriter = client->_io.Open("solutionStream", adios2::Mode::Write);
+        solWriter.BeginStep();
+        if (field_name == "velocity" || field_name == "all") {
+            dfloat *U = new dfloat[num_dim * field_offset]();
+            nrs->o_U.copyTo(U, num_dim * field_offset);
+            if (first_step) {
+                solWriter.Put<dfloat>(uIn, U);
+            } else {
+                if (send_outputs) {
+                    solWriter.Put<dfloat>(uOut, U);
+                }
+                if (send_inputs) {
+                    solWriter.Put<dfloat>(uIn, U);
+                }
+            }
+        }
+        if (field_name == "pressure" || field_name == "all") {
+            dfloat *P = new dfloat[field_offset]();
+            nrs->o_P.copyTo(P, field_offset);
+            if (first_step) {
+                solWriter.Put<dfloat>(pIn, P);
+            } else {
+                if (send_outputs) {
+                    solWriter.Put<dfloat>(pOut, P);
+                }
+                if (send_inputs) {
+                    solWriter.Put<dfloat>(pIn, P);
+                }
+            }
+        }
+        solWriter.EndStep();
+        solWriter.Close();
+
+        if (first_step) first_step = false;
+        MPI_Barrier(comm);
+        if (rank == 0 and verbose) {
+            printf("[TRAJ WRITE ADIOS] -- Done writing data\n");
+        }
+    }
+}

@@ -180,7 +180,7 @@ class ShootingWorkflow():
         """
         self.fine_tune_iter += 1
         self.launchNekRS()
-        #self.launchTrainer()
+        self.launchTrainer()
         self.poll_processes([self.nekrs_proc, self.train_proc])
 
     def rollout(self) -> None:

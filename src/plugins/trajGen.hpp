@@ -7,6 +7,7 @@
 #ifdef NEKRS_ENABLE_SMARTREDIS
 #include "smartRedis.hpp"
 #endif
+#include "adiosStreamer.hpp"
 
 void deleteDirectoryContents(const std::filesystem::path& dir);
 
@@ -37,6 +38,10 @@ public:
                         int tstep, 
                         const std::string& field_name);
 #endif
+    void trajGenWriteADIOS(adios_client_t* client,
+                           dfloat time, 
+                           int tstep, 
+                           const std::string& field_name);
 
 private:
     // nekrs objects 

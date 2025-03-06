@@ -92,7 +92,7 @@ void UDF_Setup()
   // GNN plugin
   graph = new gnn_t(nrs);
   graph->gnnSetup();
-  //graph->gnnWriteDB(client);
+  graph->gnnWriteADIOS(client);
 
   // Trajectory generation plugin
   int dt_factor = 10;
@@ -111,7 +111,7 @@ void UDF_Setup()
 void UDF_ExecuteStep(double time, int tstep)
 {
   // write trajectory
-  //tgen->trajGenWriteDB(client, time, tstep, "velocity");
+  tgen->trajGenWriteADIOS(client, time, tstep, "velocity");
 
   // Every time step check if ML training says it is time to quit
   //int exit_val = client->check_run();

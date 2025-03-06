@@ -25,10 +25,16 @@ adios_client_t::adios_client_t(MPI_Comm& comm, nrs_t *nrs)
         _adios = new adios2::ADIOS(_comm);
         _io = _adios->DeclareIO("nekRS-ML");
         _io.SetEngine(_engine);
-        _params["RendezvousReaderCount"] = "1";
-        _params["QueueFullPolicy"] = "Block";
-        _params["QueueLimit"] = "1";
-        _params["DataTransport"] = "MPI";
+        if (_stream == "sync") {
+            _params["RendezvousReaderCount"] = "1";
+            _params["QueueFullPolicy"] = "Block";
+            _params["QueueLimit"] = "1";
+        } else if (_stream == "async") {
+            _params["RendezvousReaderCount"] = "0";
+            _params["QueueFullPolicy"] = "Block";
+            _params["QueueLimit"] = "3";
+        }
+        _params["DataTransport"] = _transport;
         _params["OpenTimeoutSecs"] = "600";
         _io.SetParameters(_params);
     } 

@@ -33,7 +33,7 @@ smartredis_client_t::smartredis_client_t(nrs_t *nrs)
 
   // Initialize SR client
   if (_rank == 0)
-    printf("\nInitializing client ...\n");
+    printf("\nInitializing SmartRedis client ...\n");
   bool cluster_mode;
   if (_db_nodes > 1)
     cluster_mode = true;

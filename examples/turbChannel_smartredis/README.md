@@ -1,11 +1,8 @@
 # Online training and inference of a wall-shear stress model from LES of a turbulent channel flow.
 
-For the details on the channel flow LES, see the [turbChannel example](../turbChannel/README.md).
-
-This branch of NekRS-ML includes a plugin that enables communication with a SmartSim database through the use of the SmartRedis API. 
+This example uses the [turbChannel](../turbChannel/README.md) flow to demonstrate online training and inference with SmartSim/SmartRedis and nekRS.
 [SmartSim](https://github.com/CrayLabs/SmartSim) and [SmartRedis](https://github.com/CrayLabs/SmartRedis) are open-source libraries developed by HPE that can be used for coupling traditional HPC applications with AI/ML functionality in situ.
-
-This branch uses the turbChannel example to demonstrate online training and inference with SmartSim/SmartRedis and nekRS.
+nekRS functionality for integrating with SmartSim comed through the [smartRedis.hpp](../../src/plugins/smartRedis.hpp) plugin.
 In particular, an MLP which takes the streamwise velocity component at some prescribed location off the wall as inputs is trained to predict the wall-shear stress at the corresponding wall node. 
 This can be thought of as a crude example of using ML to train a wall-shear stress model valuable for wall-modeled LES. 
 The instructions below detail how to run the example, train the MLP model from an ongoing nekRS simulation, and then perform inference with the trained model from nekRS to compare the ML predictions with the true values. 

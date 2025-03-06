@@ -1,0 +1,7 @@
+#!/bin/bash
+
+rm -rf _pyg
+rm affinity_* config.yaml run.sh
+rm -r outputs logs
+rm turbChannel.par turbChannel.box
+

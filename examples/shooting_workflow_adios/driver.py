@@ -83,6 +83,7 @@ class ShootingWorkflow():
         cmd = f"mpiexec " + \
               f"-n {self.cfg.run_args.simprocs} " + \
               f"--ppn {self.cfg.run_args.simprocs_pn} " + \
+              f"--cpu-bind {self.cfg.run_args.sim_cpu_bind} " + \
               f"--hosts {self.sim_nodes} " + \
               f"{self.cfg.sim.affinity} {self.cfg.run_args.simprocs_pn} " + \
               f"{self.cfg.sim.executable} {self.cfg.sim.arguments}"
@@ -106,6 +107,7 @@ class ShootingWorkflow():
         cmd = f"mpiexec " + \
               f"-n {self.cfg.run_args.mlprocs} " + \
               f"--ppn {self.cfg.run_args.mlprocs_pn} " + \
+              f"--cpu-bind {self.cfg.run_args.ml_cpu_bind} " + \
               f"--hosts {self.train_nodes} " + \
               f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} " + \
               f"python {self.cfg.train.executable} {self.cfg.train.arguments}"
@@ -129,6 +131,7 @@ class ShootingWorkflow():
         cmd = f"mpiexec " + \
               f"-n {self.cfg.run_args.mlprocs} " + \
               f"--ppn {self.cfg.run_args.mlprocs_pn} " + \
+              f"--cpu-bind {self.cfg.run_args.ml_cpu_bind} " + \
               f"--hosts {self.train_nodes} " + \
               f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} " + \
               f"python {self.cfg.inference.executable} " + \

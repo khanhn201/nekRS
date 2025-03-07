@@ -193,7 +193,7 @@ void trajGen_t::trajGenWriteADIOS(adios_client_t* client,
         if (tstep % dt_factor == 0) {
             store_inputs = true;
             if (! first_step) {
-                send_data = true
+                send_data = true;
             }
         }
     } else {
@@ -213,11 +213,11 @@ void trajGen_t::trajGenWriteADIOS(adios_client_t* client,
         unsigned long _rank = rank;
         unsigned long _num_dim = num_dim;
         unsigned long _field_offset = field_offset;
-        auto uIn = client->_io.DefineVariable<dfloat>("in_u", 
+        client->uIn = client->_io.DefineVariable<dfloat>("in_u", 
                                                         {_size * _field_offset * _num_dim}, 
                                                         {_rank * _field_offset * _num_dim}, 
                                                         {_field_offset * _num_dim});
-        auto uOut = client->_io.DefineVariable<dfloat>("out_u", 
+        client->uOut = client->_io.DefineVariable<dfloat>("out_u", 
                                                         {_size * _field_offset * _num_dim}, 
                                                         {_rank * _field_offset * _num_dim}, 
                                                         {_field_offset * _num_dim});
@@ -232,8 +232,8 @@ void trajGen_t::trajGenWriteADIOS(adios_client_t* client,
         if (field_name == "velocity") {
             dfloat *U = new dfloat[num_dim * field_offset]();
             nrs->o_U.copyTo(U, num_dim * field_offset);
-            solWriter.Put<dfloat>(uIn, previous_U);
-            solWriter.Put<dfloat>(uOut, U);
+            solWriter.Put<dfloat>(client->uIn, previous_U);
+            solWriter.Put<dfloat>(client->uOut, U);
         }
         solWriter.EndStep();
         solWriter.Close();

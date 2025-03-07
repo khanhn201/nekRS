@@ -14,6 +14,9 @@ public:
   adios2::ADIOS *_adios;
   adios2::IO _io;
 
+  // solution variables
+  adios2::Variable<dfloat> uIn, uOut;
+
 private:
   // Streamer parameters
   std::string _engine;

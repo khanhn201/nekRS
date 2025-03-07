@@ -59,7 +59,7 @@ client:
 
 hydra:
   job:
-    chdir: true
+    chdir: false
 
     #defaults:
     #  - override hydra/hydra_logging: colorlog

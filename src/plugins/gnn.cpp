@@ -241,7 +241,7 @@ void gnn_t::gnnWriteADIOS(adios_client_t* client)
     auto haloInts = client->_io.DefineVariable<dlong>("halo_unique_mask", {_size * _N}, {_rank * _N}, {_N});
     auto globInts = client->_io.DefineVariable<hlong>("global_ids", {_size * _N}, {_rank * _N}, {_N});
     auto edgeInts = client->_io.DefineVariable<dlong>("edge_index", {_size * 2 * _num_edges}, {_rank * 2 * _num_edges}, {2 * _num_edges});
-    auto NInts = client->_io.DefineVariable<dlong>("N", {1}, {1}, {1});
+    auto NpInts = client->_io.DefineVariable<dlong>("Np", {1}, {1}, {1});
 
     // Write the graph data
     adios2::Engine graphWriter = client->_io.Open("graphStream", adios2::Mode::Write);
@@ -253,7 +253,7 @@ void gnn_t::gnnWriteADIOS(adios_client_t* client)
     graphWriter.Put<hlong>(globInts, mesh->globalIds);
     graphWriter.Put<dlong>(edgeInts, edge_index);
     if (rank == 0) {
-        graphWriter.Put<dlong>(NInts, &mesh->Np);
+        graphWriter.Put<dlong>(NpInts, &mesh->Np);
     }
 
     graphWriter.EndStep();

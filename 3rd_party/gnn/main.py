@@ -204,7 +204,7 @@ def main(cfg: DictConfig) -> None:
     if not cfg.online:
         train(cfg)
     else:
-        client = OnlineClient(cfg)
+        client = OnlineClient(cfg, COMM)
         COMM.Barrier()
         if RANK == 0: print('Initialized Online Client!\n', flush=True)
         train(cfg, client)

@@ -146,11 +146,21 @@ class ShootingWorkflow():
         self.infer_proc['status'] = 'running'
         print("Done\n", flush=True)
 
-    def poll_processes(self, processes: list, interval: Optional[int] = 5):
+    def kill_processes(self, processes: list) -> None:
+        """Kill processes
+        """
+        for proc in processes:
+            if proc['process'] is not None:
+                proc['process'].terminate()
+                proc['process'].wait()
+                print(f'Killed process {proc["name"]}', flush=True)
+
+    def poll_processes(self, processes: list, interval: Optional[int] = 5) -> None:
         """Poll the list of processes passed to the function and return
         boolean if all processes are done
         """
         all_finished = False
+        failure = False
         finished = 0
         try:
             while not all_finished:
@@ -159,20 +169,20 @@ class ShootingWorkflow():
                     if proc['process'] is not None:
                         status = proc['process'].poll()
                         if status is not None:
-                            finished += 1
                             if proc['process'].returncode == 0:
                                 proc['status'] = "finished"
+                                finished += 1
                             else:
                                 proc['status'] = "failed"
+                                failure = True
                         print(f"Process {proc['name']} status: {proc['status']}",flush=True)
                 if finished == len(processes): all_finished = True
+                if failure:
+                   self.kill_processes(processes)
+                   sys.exit(0)
         except KeyboardInterrupt:
             print('\nCtrl+C detected!', flush=True)
-            for proc in processes:
-                if proc['process'] is not None:
-                    proc['process'].terminate()
-                    proc['process'].wait()
-                    print(f'Killed process {proc["name"]}', flush=True)
+            self.kill_processes(processes)
             sys.exit(0)
 
     def fineTune(self) -> None:

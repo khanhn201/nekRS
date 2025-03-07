@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 from omegaconf import DictConfig
 import numpy as np
 from time import sleep, perf_counter
@@ -21,45 +21,49 @@ class OnlineClient:
     """Class for the online training client
     """
     def __init__(self, cfg: DictConfig, comm) -> None:
-        self.backend = cfg.client.backend
-        self.db_nodes = cfg.client.db_nodes
         self.client = None
+        self.backend = cfg.client.backend
         self.comm = comm
+        self.size = self.comm.Get_size()
+        self.rank = self.comm.Get_rank()
 
         # initialize the client backend
         clients = ['smartredis', 'adios']
-        if self.cfg.client not in clients:
-            sys.exit(f'Client {self.cfg.client} not implemented. '\
+        if self.backend not in clients:
+            sys.exit(f'Client {self.backend} not implemented. '\
                      f'Available options are: {clients}')
-        self.init_client()
+        self.init_client(cfg)
 
-    def init_client(self) -> None:
+    def init_client(self, cfg: DictConfig) -> None:
         """Initialize the client based on the specified backend
         """
         if self.backend == 'smartredis':
+            self.db_nodes = cfg.client.db_nodes
             SSDB = os.getenv('SSDB')
             if (self.db_nodes==1):
                 self.client = Client(address=SSDB,cluster=False)
             else:
                 self.client = Client(address=SSDB,cluster=True)
         elif self.backend == 'adios':
-            # Initialize ADIOS MPI Communicator
+            self.engine = cfg.client.adios_engine
+            self.stream = cfg.client.adios_stream
+            self.transport = cfg.client.adios_transport
             adios = Adios(self.comm)
             self.client = adios.declare_io('nekRS-ML')
-            self.client.set_engine(self.cfg.client.adios_engine)
-            if self.cfg.client.adios_stream == 'sync':
+            self.client.set_engine(self.engine)
+            if self.stream == 'sync':
                 parameters = {
                     'RendezvousReaderCount': '1', # producer waits for consumer in Open()
                     'QueueFullPolicy': 'Block', # wait for consumer to get every step
                     'QueueLimit': '1', # only buffer one step
                 }
-            elif self.cfg.client.adios_stream == 'async': 
+            elif self.stream == 'async': 
                 parameters = {
                     'RendezvousReaderCount': '0', # producer does not wait for consumer in Open()
                     'QueueFullPolicy': 'Block', # slow consumer misses out on steps
                     'QueueLimit': '3', # buffer first step
                 }
-            parameters['DataTransport'] = self.cfg.client.adios_transport # options: MPI, WAN, UCX, RDMA
+            parameters['DataTransport'] = self.transport # options: MPI, WAN, UCX, RDMA
             parameters['OpenTimeoutSecs'] = '600' # number of seconds producer waits on Open() for consumer
             self.client.set_parameters(parameters)
 
@@ -116,4 +120,83 @@ class OnlineClient:
         """
         if self.backend == 'smartredis':
             return self.client.get_list_length(list_name)
+        
+    def get_graph_data_from_stream(self) -> dict:
+        """Get the entire set of graph datasets from a stream
+        """
+        graph_data = {}
+        if self.backend == 'adios':
+            with Stream(self.client, 'graphStream', 'r', self.comm) as stream:
+                stream.begin_step()
+                
+                graph_data['Np'] = int(stream.read('Np'))
+
+                arr = stream.inquire_variable('pos_node')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                graph_data['pos'] = stream.read('pos_node', [start], [count]).reshape((-1,3))
+
+                arr = stream.inquire_variable('edge_index')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                graph_data['edge_index'] = stream.read('edge_index', [start], [count]).reshape((-1,2)).T
+
+                arr = stream.inquire_variable('global_ids')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                graph_data['global_ids'] = stream.read('global_ids', [start], [count]).reshape((-1,1))
+
+                arr = stream.inquire_variable('local_unique_mask')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                graph_data['local_unique_mask'] = stream.read('local_unique_mask', [start], [count])
+
+                arr = stream.inquire_variable('halo_unique_mask')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                graph_data['halo_unique_mask'] = stream.read('halo_unique_mask', [start], [count])
+                
+                stream.end_step()
+        return graph_data
+
+    def get_train_data_from_stream(self) -> Tuple[np.ndarray,np.ndarray]:
+        """Get the solution from a stream
+        """
+        if self.backend == 'adios':
+            with Stream(self.client, 'solutionStream', 'r', self.comm) as stream:
+                stream.begin_step()
+
+                arr = stream.inquire_variable('out_u')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                outputs = stream.read('out_u', [start], [count]).reshape((-1,3))
+
+                arr = stream.inquire_variable('in_u')
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                inputs = stream.read('in_u', [start], [count]).reshape((-1,3))
+
+                stream.end_step()
+        return inputs, outputs
 

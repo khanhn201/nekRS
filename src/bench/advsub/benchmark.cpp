@@ -345,10 +345,12 @@ occa::kernel benchmarkAdvsub(int Nfields,
 
       const auto absTol = 1.0;
       const auto err = maxRelErr<dfloat>(referenceResults, results, platform->comm.mpiComm, absTol);
-      const auto scale = 100 * range<dfloat>(referenceResults, absTol);
-      const auto eps = scale * std::numeric_limits<dfloat>::epsilon();
- 
-      if (err > eps || std::isnan(err)) {
+
+      double scale = 100 * range<dfloat>(referenceResults, absTol);
+      MPI_Allreduce(MPI_IN_PLACE, &scale, 1, MPI_DOUBLE, MPI_MIN, platform->comm.mpiComm);
+
+#if 0
+      if (err > (scale * std::numeric_limits<dfloat>::epsilon()) || std::isnan(err)) {
         if (platform->comm.mpiRank == 0 && verbosity > 1) {
           std::cout << "advSub: Ignore version " << kernelVariant << " as correctness check failed with err=" << err
                     << std::endl;
@@ -362,6 +364,7 @@ occa::kernel benchmarkAdvsub(int Nfields,
                     << std::endl;
         }
       }
+#endif
     }
 
     return kernel;

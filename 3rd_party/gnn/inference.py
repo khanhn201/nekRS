@@ -293,7 +293,7 @@ def main(cfg: DictConfig) -> None:
     if not cfg.online:
         inference(cfg)
     else:
-        client = OnlineClient(cfg)
+        client = OnlineClient(cfg,COMM)
         COMM.Barrier()
         if RANK == 0: print('Initialized Online Client!\n', flush=True)
         inference_rollout(cfg, client)

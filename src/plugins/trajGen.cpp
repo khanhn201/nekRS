@@ -213,11 +213,11 @@ void trajGen_t::trajGenWriteADIOS(adios_client_t* client,
         unsigned long _rank = rank;
         unsigned long _num_dim = num_dim;
         unsigned long _field_offset = field_offset;
-        client->uIn = client->_io.DefineVariable<dfloat>("in_u", 
+        client->uIn = client->_stream_io.DefineVariable<dfloat>("in_u", 
                                                         {_size * _field_offset * _num_dim}, 
                                                         {_rank * _field_offset * _num_dim}, 
                                                         {_field_offset * _num_dim});
-        client->uOut = client->_io.DefineVariable<dfloat>("out_u", 
+        client->uOut = client->_stream_io.DefineVariable<dfloat>("out_u", 
                                                         {_size * _field_offset * _num_dim}, 
                                                         {_rank * _field_offset * _num_dim}, 
                                                         {_field_offset * _num_dim});
@@ -227,7 +227,7 @@ void trajGen_t::trajGenWriteADIOS(adios_client_t* client,
         if (rank == 0 and verbose) {
             printf("[TRAJ WRITE ADIOS] -- Writing data at tstep %d and physical time %g \n", tstep, time);
         }
-        adios2::Engine solWriter = client->_io.Open("solutionStream", adios2::Mode::Write);
+        adios2::Engine solWriter = client->_stream_io.Open("solutionStream", adios2::Mode::Write);
         solWriter.BeginStep();
         if (field_name == "velocity") {
             dfloat *U = new dfloat[num_dim * field_offset]();

@@ -26,6 +26,8 @@ class OnlineClient:
         self.comm = comm
         self.size = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
+        self.local_rank = int(os.getenv("PALS_LOCAL_RANKID"))
+        self.local_size = int(os.getenv("PALS_LOCAL_SIZE"))
 
         # initialize the client backend
         clients = ['smartredis', 'adios']
@@ -49,7 +51,7 @@ class OnlineClient:
             self.stream = cfg.client.adios_stream
             self.transport = cfg.client.adios_transport
             adios = Adios(self.comm)
-            self.client = adios.declare_io('nekRS-ML')
+            self.client = adios.declare_io('streamIO')
             self.client.set_engine(self.engine)
             if self.stream == 'sync':
                 parameters = {
@@ -90,6 +92,18 @@ class OnlineClient:
                             sys.exit(f'Could not find {file_name} in DB')
             else:
                 array = file_name.get_tensor('data')
+        if self.backend == 'adios':
+            var_name = file_name.split('.')[0]
+            with Stream(file_name, 'r', self.comm) as stream:
+                stream.begin_step()
+                arr = stream.inquire_variable(var_name)
+                shape = arr.shape()
+                count = int(shape[0] / self.size)
+                start = count * self.rank
+                if self.rank == self.size - 1:
+                    count += shape[0] % self.size
+                array = stream.read(var_name, [start], [count])
+                stream.end_step()
         return array
     
     def put_array(self, file_name: str, array: np.ndarray) -> None:
@@ -126,7 +140,13 @@ class OnlineClient:
         """
         graph_data = {}
         if self.backend == 'adios':
-            with Stream(self.client, 'graphStream', 'r', self.comm) as stream:
+            while True:
+                if os.path.exists('./graph.bp'):
+                    break
+                else:
+                    sleep(1)
+            #with Stream(self.client, 'graphStream', 'r', self.comm) as stream:
+            with Stream('graph.bp', 'r', self.comm) as stream:
                 stream.begin_step()
                 
                 graph_data['Np'] = int(stream.read('Np'))
@@ -199,4 +219,25 @@ class OnlineClient:
 
                 stream.end_step()
         return inputs, outputs
+
+    def stop_nekRS(self) -> None:
+        """Communicate to nekRS to stop running and exit cleanly
+        """
+        MLrun = 0
+        if self.backend == 'smartredis':
+            if self.db_nodes == 1:
+                if self.rank % self.local_size == 0:
+                    self.client.put_array('check-run',
+                                          np.int32(np.array([MLrun]))
+                    )
+            else:
+                if self.rank == 0:
+                    self.client.put_array('check-run',
+                                          np.int32(np.array([MLrun]))
+                    )
+        elif self.backend == 'adios':
+            with Stream('check-run.bp', 'w', self.comm) as stream:
+                if self.rank == 0:
+                    stream.write("check-run", MLrun)
+            
 

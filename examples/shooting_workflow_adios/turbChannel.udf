@@ -114,14 +114,14 @@ void UDF_ExecuteStep(double time, int tstep)
   tgen->trajGenWriteADIOS(client, time, tstep, "velocity");
 
   // Every time step check if ML training says it is time to quit
-  //int exit_val = client->check_run();
-  //if (exit_val==0) {
-  //  nekrs::setEndTime(-10.0);
-  //  nekrs::forceLastStep();
-  //}
+  int exit_val = client->check_run();
+  if (exit_val == 0) {
+    nekrs::setEndTime(-10.0);
+    nekrs::forceLastStep();
+  }
 
   if (nrs->lastStep) {
-    //client->checkpoint();
+    client->checkpoint();
     delete graph;
     delete tgen;
   }

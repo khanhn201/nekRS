@@ -1,3 +1,4 @@
+#include <filesystem>
 #include "adiosStreamer.hpp"
 
 // Initialize the ADIOS2 client
@@ -23,8 +24,9 @@ adios_client_t::adios_client_t(MPI_Comm& comm, nrs_t *nrs)
     try
     {
         _adios = new adios2::ADIOS(_comm);
-        _io = _adios->DeclareIO("nekRS-ML");
-        _io.SetEngine(_engine);
+
+        _stream_io = _adios->DeclareIO("streamIO");
+        _stream_io.SetEngine(_engine);
         if (_stream == "sync") {
             _params["RendezvousReaderCount"] = "1";
             _params["QueueFullPolicy"] = "Block";
@@ -36,7 +38,9 @@ adios_client_t::adios_client_t(MPI_Comm& comm, nrs_t *nrs)
         }
         _params["DataTransport"] = _transport;
         _params["OpenTimeoutSecs"] = "600";
-        _io.SetParameters(_params);
+        _stream_io.SetParameters(_params);
+
+        _write_io = _adios->DeclareIO("writeIO");
     } 
     catch (std::exception &e)
     {
@@ -54,4 +58,70 @@ adios_client_t::adios_client_t(MPI_Comm& comm, nrs_t *nrs)
 adios_client_t::~adios_client_t()
 {
     if (_rank == 0) printf("Taking down adios_client_t\n");
+}
+
+// check if nekRS should quit
+int adios_client_t::check_run()
+{
+    hlong exit_val;
+    int exists;
+    std::string fname = "check-run.bp";
+
+    // Check if check-run file exists
+    if (_rank == 0) {
+        if (std::filesystem::exists(fname)) {
+            printf("Found check-run file!\n");
+            fflush(stdout);
+            exists = 1;
+        } else {
+            exists = 0;
+        }
+    }
+    MPI_Bcast(&exists, 1, MPI_INT, 0, _comm);
+
+    // Read check-run file if exists
+    if (exists) {
+        adios2::Engine reader = _write_io.Open(fname, adios2::Mode::Read);
+        reader.BeginStep();
+        adios2::Variable<hlong> var = _write_io.InquireVariable<hlong>("check-run");
+        if (_rank == 0 and var) {
+            reader.Get(var, &exit_val);
+        }
+        reader.EndStep();
+        reader.Close();
+        MPI_Bcast(&exit_val, 1, MPI_INT, 0, _comm);
+
+    } else {
+        exit_val = 1;
+    }
+
+    if (exit_val == 0 && _rank == 0) {
+        printf("ML training says time to quit ...\n");
+    }
+    fflush(stdout);
+
+    return exit_val;
+}
+
+// write checkpoint file
+void adios_client_t::checkpoint()
+{
+    if (_rank == 0)
+        printf("\nWriting checkpoint ...\n");
+    std::string fname = "checkpoint.bp";
+    unsigned long num_dim = _nrs->mesh->dim;
+    unsigned long field_offset = _nrs->fieldOffset;
+    dfloat *U = new dfloat[num_dim * field_offset]();
+    _nrs->o_U.copyTo(U, num_dim * field_offset);
+
+    adios2::Variable<dfloat> varU = _write_io.DefineVariable<dfloat>(
+        "checkpoint", 
+        {_size * num_dim * field_offset}, 
+        {_rank * num_dim * field_offset}, 
+        {num_dim * field_offset});
+    adios2::Engine writer = _write_io.Open(fname, adios2::Mode::Write);
+    writer.BeginStep();
+    writer.Put<dfloat>(varU, U);
+    writer.EndStep();
+    writer.Close();
 }

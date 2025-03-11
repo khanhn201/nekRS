@@ -156,15 +156,15 @@ def train(cfg: DictConfig,
             if trainer.iteration % cfg.ckptfreq == 0:
                 trainer.checkpoint()
 
-            # Break loop over dataloader
-            if trainer.iteration >= trainer.total_iterations:
-                break
-
-            # Update data loader when online training
+            # Update data loader when online training (and flush stream if using ADIOS)
             if cfg.online:
                 if trainer.iteration % cfg.online_update_freq == 0:
                     trainer.update_data()
                     break
+
+            # Break loop over dataloader
+            if trainer.iteration >= trainer.total_iterations:
+                break
         
         # Break while loop
         if trainer.iteration >= trainer.total_iterations:
@@ -181,10 +181,10 @@ def train(cfg: DictConfig,
     trainer.save_model()
 
     # Tell simulation to exit
-    if cfg.online and (RANK % LOCAL_SIZE == 0):
-        log.info(f"[RANK {RANK}] -- Telling NekRS to quit ...")
-        arrMLrun = np.int32(np.zeros(1))
-        client.put_array('check-run',arrMLrun)
+    if cfg.online:
+        if RANK == 0: log.info(f"[RANK {RANK}] -- Telling NekRS to quit ...")
+        client.stop_nekRS()
+    COMM.Barrier()
 
     # Print timing and FOM
     utils.print_fom(n_nodes_local, local_times, local_throughputs)

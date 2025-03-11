@@ -665,13 +665,7 @@ class Trainer:
 
         return 
 
-    #def prepare_snapshot_data(self, path_to_snap: str, 
-    #                          n_colms: Optional[int] = 3,
-    #                          data_x: Optional[np.ndarray] = None):
     def prepare_snapshot_data(self, data_x: np.ndarray):
-        #data_x = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
-        #if data_x is None:
-        #    data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
          
         # Retain only N_gll = Np*Ne elements
@@ -913,13 +907,15 @@ class Trainer:
             files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
             file = files[0]
             path_x = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + file
-            data_x = self.prepare_snapshot_data(path_x,3)
-            self.data_list.append({'x': data_x, 'y': data_x})
+            data_x = self.load_data(path_x, dtype=np.float64).reshape((-1,3))
         else:
-            # Get the initial condition
-            file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
-            data_x = self.prepare_snapshot_data(file)
-            self.data_list.append({'x': data_x, 'y': data_x})
+            if self.cfg.client.backend == 'smartredis':
+                file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
+            elif self.cfg.client.backend == 'adios':
+                file = 'checkpoint.bp'
+            data_x = self.client.get_array(file).reshape((-1,3))
+        data_x = self.prepare_snapshot_data(data_x)
+        self.data_list.append({'x': data_x, 'y': data_x})
         data = {'train': [self.data_list[0]], 'validation': [{}]}
 
         # Compute statistics for normalization
@@ -1112,6 +1108,7 @@ class Trainer:
             self.data_list.append(
                     {'x': data_x_i, 'y':data_y_i}
             )
+            if RANK == 0: log.info(f'[RANK {RANK}]: Found 1 new sample to read, will update dataloader')
         
         data = {'train': [], 'validation': []}
         data['train'] = list(self.data_list)

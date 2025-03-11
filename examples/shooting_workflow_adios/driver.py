@@ -136,7 +136,7 @@ class ShootingWorkflow():
               f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} " + \
               f"python {self.cfg.inference.executable} " + \
               f"{self.cfg.inference.arguments} model_dir={self.run_dir}/saved_models/"
-        print("Launching GNN inference ...")
+        print("\nLaunching GNN inference ...")
         self.infer_proc['process'] = subprocess.Popen(cmd,
                                 executable="/bin/bash",
                                 shell=True,
@@ -175,6 +175,7 @@ class ShootingWorkflow():
                             if proc['process'].returncode == 0:
                                 proc['status'] = "finished"
                                 finished += 1
+                                proc['process'] = None 
                             else:
                                 proc['status'] = "failed"
                                 failure = True
@@ -213,7 +214,7 @@ class ShootingWorkflow():
         self.fineTune()
 
         # Roll-out model
-        #self.rollout()
+        self.rollout()
         
 
 ## Main function

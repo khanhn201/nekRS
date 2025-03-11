@@ -1,4 +1,4 @@
-# Solution shooting workflow with a GNN surrogate model
+# Solution shooting workflow with a GNN surrogate model using SmartSim
 
 This example builds off of the [online training of time dependent GNN surrogate](../tgv_gnn_traj_online/README.md), however it adds the step of performing inference with the GNN surrogate after online training has concluded. 
 The flow problem is based on the turbulence channel flow LES, for which the details are in the [turbChannel example](../turbChannel/README.md).

@@ -65,7 +65,7 @@ echo -e "\n# Run nekRS" >>$RFILE
 echo "mpiexec -n ${TOTAL_RANKS} -ppn ${RANKS_PER_NODE} --cpu-bind=list:${CPU_BIND_LIST} -- $NEKRS_HOME/bin/nekrs --setup ${case} --backend ${NEKRS_BACKEND}" >> $RFILE
 
 echo -e "\n# Generate the halo_info, edge_weights and node_degree files" >>$RFILE
-echo "mpiexec -n ${TOTAL_RANKS} -ppn ${RANKS_PER_NODE} --cpu-bind=list:${CPU_BIND_LIST} python ${NEKRS_HOME}/3rd_party/gnn/create_halo_info.py --SIZE ${TOTAL_RANKS} --POLY 7 --PATH ./gnn_outputs_poly_7" >> $RFILE
+echo "mpiexec -n ${TOTAL_RANKS} -ppn ${RANKS_PER_NODE} --cpu-bind=list:${CPU_BIND_LIST} python ${NEKRS_HOME}/3rd_party/gnn/create_halo_info_par.py --POLY 7 --PATH ./gnn_outputs_poly_7" >> $RFILE
 
 echo -e "\n# Check the GNN input files" >>$RFILE
 echo "echo \"Checking GNN graph input files ...\"" >>$RFILE

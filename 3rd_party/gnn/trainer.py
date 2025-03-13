@@ -640,16 +640,16 @@ class Trainer:
 
     def setup_halo(self):
         if self.cfg.verbose: log.info('[RANK %d]: Assembling halo_ids_list using reduced graph' %(RANK))
-        main_path = self.cfg.gnn_outputs_path
-
         halo_info = None
         if SIZE > 1 and self.cfg.consistency:
-            #halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
-            halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
-            # Get list of neighboring processors for each processor
-            self.neighboring_procs = np.unique(halo_info[:,3])
-            n_nodes_local = self.data_reduced.pos.shape[0]
-            n_nodes_halo = halo_info.shape[0]
+            if not self.cfg.online:
+                main_path = self.cfg.gnn_outputs_path
+                #halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
+                halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
+                # Get list of neighboring processors for each processor
+                self.neighboring_procs = np.unique(halo_info[:,3])
+                n_nodes_local = self.data_reduced.pos.shape[0]
+                n_nodes_halo = halo_info.shape[0]                
             if self.cfg.verbose: log.info(f'[RANK {RANK}]: Found {len(self.neighboring_procs)} neighboring processes: {self.neighboring_procs}')
         else:
             #print('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)

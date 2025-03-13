@@ -834,8 +834,8 @@ class Trainer:
             # Load files
             log.info(f'[RANK {RANK}]: Found {len(output_files)} trajectory files in DB')
             for i in range(len(output_files)):
-                data_x_i = self.client.get_array(input_files[i]).astype(NP_FLOAT_DTYPE)
-                data_y_i = self.client.get_array(output_files[i]).astype(NP_FLOAT_DTYPE)
+                data_x_i = self.client.get_array(input_files[i]).astype(NP_FLOAT_DTYPE).T
+                data_y_i = self.client.get_array(output_files[i]).astype(NP_FLOAT_DTYPE).T
                 data_x_i = self.prepare_snapshot_data(data_x_i)
                 data_y_i = self.prepare_snapshot_data(data_y_i)
                 self.data_list.append(
@@ -1096,8 +1096,8 @@ class Trainer:
                 output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
                 input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
                 for i in range(len(self.data_list),len(output_files)):
-                    data_x_i = self.client.get_array(input_files[i]).astype(NP_FLOAT_DTYPE)
-                    data_y_i = self.client.get_array(output_files[i]).astype(NP_FLOAT_DTYPE)
+                    data_x_i = self.client.get_array(input_files[i]).astype(NP_FLOAT_DTYPE).T
+                    data_y_i = self.client.get_array(output_files[i]).astype(NP_FLOAT_DTYPE).T
                     data_x_i = self.prepare_snapshot_data(data_x_i)
                     data_y_i = self.prepare_snapshot_data(data_y_i)
                     self.data_list.append({'x': data_x_i, 'y': data_y_i})

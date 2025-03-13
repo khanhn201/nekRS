@@ -227,13 +227,13 @@ class OnlineClient:
         if self.backend == 'smartredis':
             if self.db_nodes == 1:
                 if self.rank % self.local_size == 0:
-                    self.client.put_array('check-run',
-                                          np.int32(np.array([MLrun]))
+                    self.put_array('check-run',
+                                    np.int32(np.array([MLrun]))
                     )
             else:
                 if self.rank == 0:
-                    self.client.put_array('check-run',
-                                          np.int32(np.array([MLrun]))
+                    self.put_array('check-run',
+                                    np.int32(np.array([MLrun]))
                     )
         elif self.backend == 'adios':
             with Stream('check-run.bp', 'w', self.comm) as stream:

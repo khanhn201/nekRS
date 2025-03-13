@@ -33,7 +33,7 @@ smartredis_client_t::smartredis_client_t(nrs_t *nrs)
 
   // Initialize SR client
   if (_rank == 0)
-    printf("\nInitializing client ...\n");
+    printf("\nInitializing SmartRedis client ...\n");
   bool cluster_mode;
   if (_db_nodes > 1)
     cluster_mode = true;
@@ -86,7 +86,7 @@ int smartredis_client_t::check_run()
 
   // Broadcast exit value and return it
   MPI_Bcast(&exit_val, 1, MPI_INT, 0, platform->comm.mpiComm);
-  if (exit_val==0 && platform->comm.mpiRank==0) {
+  if (exit_val==0 && _rank==0) {
     printf("\nML training says time to quit ...\n");
   }
   fflush(stdout);

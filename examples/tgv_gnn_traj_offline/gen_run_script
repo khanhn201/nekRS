@@ -2,7 +2,7 @@
 set -a
 
 SYSTEM="aurora"
-NEKRS_HOME="/flare/datascience/balin/Nek/nekRSv24/exe/nekrsv24_onlinegnn_frameworks"
+NEKRS_HOME="/flare/datascience/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks"
 VENV_PATH=""
 PROJ_ID="datascience"
 QUEUE="debug"

@@ -35,6 +35,7 @@ Specifically, make sure to set
 
 ```
 SYSTEM # the ALCF system to run on (aurora, polaris)
+DEPLOYMENT # the deployment strategy for the workflow (colocated, clustered)
 NEKRS_HOME # path to the nekRS install directory
 VENV_PATH # path to the Python venv activate script
 PROJ_ID # project name for the allocation

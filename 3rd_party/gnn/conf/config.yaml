@@ -52,11 +52,14 @@ online_update_freq: 10
 client: 
     backend: "smartredis"
     db_nodes: 1
+    adios_engine: 'SST'
+    adios_transport: 'WAN' # WAN, MPI, UCX, RDMA
+    adios_stream: 'sync' # sync, async
 
 
 hydra:
   job:
-    chdir: true
+    chdir: false
 
     #defaults:
     #  - override hydra/hydra_logging: colorlog

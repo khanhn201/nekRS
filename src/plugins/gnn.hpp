@@ -7,6 +7,7 @@
 #ifdef NEKRS_ENABLE_SMARTREDIS
 #include "smartRedis.hpp"
 #endif
+#include "adiosStreamer.hpp"
 
 typedef struct {
     dlong localId; 
@@ -47,6 +48,7 @@ public:
 #ifdef NEKRS_ENABLE_SMARTREDIS
     void gnnWriteDB(smartredis_client_t* client);
 #endif
+    void gnnWriteADIOS(adios_client_t* client);
 
 private:
     // MPI stuff 

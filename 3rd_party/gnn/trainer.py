@@ -113,9 +113,13 @@ class Trainer:
         self.client = client
 
         # ~~~ Perform some checks
-        if not cfg.consistency:
-            assert cfg.halo_swap_mode == 'none', \
+        if not self.cfg.consistency:
+            assert self.cfg.halo_swap_mode == 'none', \
                 "For inconsistent model, set halo_swap_mode=none"
+        if self.cfg.online and self.cfg.client.backend == 'adios':
+            assert self.cfg.time_dependency == 'time_dependent', \
+                'ADIOS2 backend only implemented for time dependent modeling' + \
+                'from solution trajectory'
 
         # ~~~ Initialize DDP
         if WITH_DDP:
@@ -313,8 +317,8 @@ class Trainer:
         try:
             main_path = self.cfg.gnn_outputs_path if not self.cfg.online else ''
             #Np = np.loadtxt(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
-            Np = self.load_data(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
-            poly = np.cbrt(Np) - 1.
+            #Np = self.load_data(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
+            poly = np.cbrt(self.Np) - 1.
             poly = int(poly)
         except FileNotFoundError:
             poly = 0
@@ -541,7 +545,7 @@ class Trainer:
                 data = data.T
         return data
 
-    def setup_local_graph(self):
+    def load_graph_data(self):
         """
         Load in the local graph
         """
@@ -550,46 +554,70 @@ class Trainer:
             main_path = self.cfg.gnn_outputs_path + '/'
         else:
             main_path = ""
-        path_to_pos_full = main_path + 'pos_node_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_ei = main_path + 'edge_index_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_overlap = main_path + 'overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_glob_ids = main_path + 'global_ids_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_unique_local = main_path + 'local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
-        path_to_unique_halo = main_path + 'halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
         
-        # ~~~~ Get positions and global node index
-        if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
-        #pos = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
-        pos = self.load_data(path_to_pos_full, extension='.bin').reshape((-1,3))
-        pos = pos.astype(NP_FLOAT_DTYPE)
+        if self.cfg.client.backend == 'adios':
+            graph_data = self.client.get_graph_data_from_stream()
+            self.Np = graph_data['Np']
+            pos = graph_data['pos']
+            gli = graph_data['global_ids']
+            ei = graph_data['edge_index']
+            local_unique_mask = graph_data['local_unique_mask']
+            halo_unique_mask = graph_data['halo_unique_mask']
+        else:
+            path_to_pos_full = main_path + 'pos_node_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_ei = main_path + 'edge_index_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_overlap = main_path + 'overlap_ids_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_glob_ids = main_path + 'global_ids_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_unique_local = main_path + 'local_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_unique_halo = main_path + 'halo_unique_mask_rank_%d_size_%d' %(RANK,SIZE)
+            path_to_Np = main_path + "Np_rank_%d_size_%d" %(RANK, SIZE)
 
-        pos_orig = np.copy(pos)
+            # Polynomial order
+            self.Np = self.load_data(path_to_Np, dtype=np.float32)
+
+            # Node positions
+            if self.cfg.verbose: log.info('[RANK %d]: Loading positions and global node index' %(RANK))
+            #pos = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_pos_full + ".bin", dtype=np.float64).reshape((-1,3))
+            pos = self.load_data(path_to_pos_full, extension='.bin').reshape((-1,3))
+
+            # Global node index
+            #gli = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
+            gli = self.load_data(path_to_glob_ids,dtype=np.int64,extension='.bin').reshape((-1,1))
+
+            # Edge index
+            if self.cfg.verbose: log.info('[RANK %d]: Loading edge index' %(RANK))
+            #ei = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
+            ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin') 
+            if not self.cfg.online:
+                ei = ei.reshape((-1,2)).T
+            ei = ei.astype(np.int64) # sb: int64 for edge_index 
+
+            # Local unique mask
+            if self.cfg.verbose: log.info('[RANK %d]: Loading local unique mask' %(RANK))
+            #local_unique_mask = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
+            local_unique_mask = self.load_data(path_to_unique_local,dtype=np.int32,extension='.bin')
+
+            # Halo unique mask
+            halo_unique_mask = np.array([])
+            if SIZE > 1:
+                #halo_unique_mask = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
+                halo_unique_mask = self.load_data(path_to_unique_halo,dtype=np.int32,extension='.bin')
+
+        return pos, gli, ei, local_unique_mask, halo_unique_mask
+
+    def setup_local_graph(self):
+        """
+        Setup the local graph
+        """
+        # ~~~~ Read the graph data structures
+        pos, gli, ei, local_unique_mask, halo_unique_mask = self.load_graph_data()
 
         # We are only periodic in z for the BFS. so we do the following:  
+        pos = pos.astype(NP_FLOAT_DTYPE)
+        pos_orig = np.copy(pos)
         L_z = 2. 
         # pos[:,2] = np.cos(2.*np.pi*pos[:,2]/L_z) # cosine
         pos[:,2] = np.abs((pos[:,2] % L_z) - L_z / 2) # piecewise linear 
-        #gli = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_glob_ids + ".bin", dtype=np.int64).reshape((-1,1))
-        gli = self.load_data(path_to_glob_ids,dtype=np.int64,extension='.bin').reshape((-1,1))
-
-        # ~~~~ Get edge index
-        if self.cfg.verbose: log.info('[RANK %d]: Loading edge index' %(RANK))
-        #ei = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_ei + ".bin", dtype=np.int32).reshape((-1,2)).T
-        ei = self.load_data(path_to_ei, dtype=np.int32, extension='.bin') 
-        if not self.cfg.online:
-            ei = ei.reshape((-1,2)).T
-        ei = ei.astype(np.int64) # sb: int64 for edge_index 
-        
-        # ~~~~ Get local unique mask
-        if self.cfg.verbose: log.info('[RANK %d]: Loading local unique mask' %(RANK))
-        #local_unique_mask = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_local + ".bin", dtype=np.int32)
-        local_unique_mask = self.load_data(path_to_unique_local,dtype=np.int32,extension='.bin')
-
-        # ~~~~ Get halo unique mask
-        halo_unique_mask = np.array([])
-        if SIZE > 1:
-            #halo_unique_mask = np.fromfile(self.cfg.gnn_outputs_path+'/'+path_to_unique_halo + ".bin", dtype=np.int32)
-            halo_unique_mask = self.load_data(path_to_unique_halo,dtype=np.int32,extension='.bin')
 
         # ~~~~ Make the full graph: 
         if self.cfg.verbose: log.info('[RANK %d]: Making the FULL GLL-based graph with overlapping nodes' %(RANK))
@@ -637,9 +665,7 @@ class Trainer:
 
         return 
 
-    def prepare_snapshot_data(self, path_to_snap: str, n_colms: int = 3):
-        #data_x = np.fromfile(self.cfg.gnn_outputs_path+'/'+f'fld_u_time_0.0_rank_{RANK}_size_{SIZE}.bin', dtype=np.float64).reshape((-1,n_colms)) 
-        data_x = self.load_data(path_to_snap, dtype=np.float64).reshape((-1,n_colms))
+    def prepare_snapshot_data(self, data_x: np.ndarray):
         data_x = data_x.astype(NP_FLOAT_DTYPE) # force NP_FLOAT_DTYPE
          
         # Retain only N_gll = Np*Ne elements
@@ -720,8 +746,10 @@ class Trainer:
             output_files = [path_prepend+output_file for output_file in output_files]
         log.info(f'[RANK {RANK}]: Found {len(output_files)} new field files in DB')
         for i in range(len(output_files)):
-            data_x = self.prepare_snapshot_data(input_files[i],3)
-            data_y = self.prepare_snapshot_data(output_files[i],1)
+            data_x = self.load_data(input_files[i], dtype=np.float64).reshape((-1,3))
+            data_x = self.prepare_snapshot_data(data_x)
+            data_y = self.load_data(output_files[i], dtype=np.float64).reshape((-1,1))
+            data_y = self.prepare_snapshot_data(data_y)
             self.data_list.append({'x': data_x, 'y':data_y})
 
         # split into train/validation
@@ -791,12 +819,14 @@ class Trainer:
                 step_y_i = idx_y[i]
                 path_x_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_x[i]]
                 path_y_i = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + files[idx_y[i]]
-                data_x_i = self.prepare_snapshot_data(path_x_i,3)
-                data_y_i = self.prepare_snapshot_data(path_y_i,3)
+                data_x_i = self.load_data(path_x_i, dtype=np.float64).reshape((-1,3))
+                data_y_i = self.load_data(path_y_i, dtype=np.float64).reshape((-1,3))
+                data_x_i = self.prepare_snapshot_data(data_x_i)
+                data_y_i = self.prepare_snapshot_data(data_y_i)
                 self.data_list.append(
                         {'x': data_x_i, 'y':data_y_i, 'step_x':step_x_i, 'step_y':step_y_i} 
                 )
-        else:
+        elif self.cfg.online and self.cfg.client.backend == 'smartredis':
             # Get the file list
             output_files = self.client.get_file_list(f'outputs_rank_{RANK}') # outputs must come first
             input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
@@ -804,11 +834,20 @@ class Trainer:
             # Load files
             log.info(f'[RANK {RANK}]: Found {len(output_files)} trajectory files in DB')
             for i in range(len(output_files)):
-                data_x_i = self.prepare_snapshot_data(input_files[i])
-                data_y_i = self.prepare_snapshot_data(output_files[i])
+                data_x_i = self.client.get_array(input_files[i]).astype(NP_FLOAT_DTYPE).T
+                data_y_i = self.client.get_array(output_files[i]).astype(NP_FLOAT_DTYPE).T
+                data_x_i = self.prepare_snapshot_data(data_x_i)
+                data_y_i = self.prepare_snapshot_data(data_y_i)
                 self.data_list.append(
                         {'x': data_x_i, 'y':data_y_i}
                 )
+        elif self.cfg.online and self.cfg.client.backend == 'adios':
+            data_x_i, data_y_i = self.client.get_train_data_from_stream()
+            data_x_i = self.prepare_snapshot_data(data_x_i)
+            data_y_i = self.prepare_snapshot_data(data_y_i)
+            self.data_list.append(
+                    {'x': data_x_i, 'y':data_y_i}
+            )
 
         # split into train/validation
         data = {'train': [], 'validation': []}
@@ -868,13 +907,15 @@ class Trainer:
             files.sort(key=lambda x:int(x.split('_')[-1].split('.')[0]))
             file = files[0]
             path_x = data_dir + f"/data_rank_{RANK}_size_{SIZE}/" + file
-            data_x = self.prepare_snapshot_data(path_x,3)
-            self.data_list.append({'x': data_x, 'y': data_x})
+            data_x = self.load_data(path_x, dtype=np.float64).reshape((-1,3))
         else:
-            # Get the initial condition
-            file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
-            data_x = self.prepare_snapshot_data(file)
-            self.data_list.append({'x': data_x, 'y': data_x})
+            if self.cfg.client.backend == 'smartredis':
+                file = f'checkpt_u_rank_{RANK}_size_{SIZE}'
+            elif self.cfg.client.backend == 'adios':
+                file = 'checkpoint.bp'
+            data_x = self.client.get_array(file).reshape((-1,3))
+        data_x = self.prepare_snapshot_data(data_x)
+        self.data_list.append({'x': data_x, 'y': data_x})
         data = {'train': [self.data_list[0]], 'validation': [{}]}
 
         # Compute statistics for normalization
@@ -1043,28 +1084,32 @@ class Trainer:
         if RANK == 0:
             log.info('In update_data...')
 
-        # Check if new files are available to read
-        num_files = self.client.get_file_list_length(f'outputs_rank_{RANK}')
-        num_new_files = num_files - len(self.data_list)
-        if num_new_files == 0:
-            log.info(f'[RANK {RANK}]: No new files to read, did not update dataloader')
-            return
-        else:
-            log.info(f'[RANK {RANK}]: Found {num_new_files} new files to read, will update dataloader')
+        if self.cfg.client.backend == 'smartredis':
+            # Check if new files are available to read
+            num_files = self.client.get_file_list_length(f'outputs_rank_{RANK}')
+            num_new_files = num_files - len(self.data_list)
+            if num_new_files == 0:
+                if RANK == 0: log.info(f'[RANK {RANK}]: No new files to read, did not update dataloader')
+                return
+            else:
+                if RANK == 0: log.info(f'[RANK {RANK}]: Found {num_new_files} new files to read, will update dataloader')
+                output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
+                input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
+                for i in range(len(self.data_list),len(output_files)):
+                    data_x_i = self.client.get_array(input_files[i]).astype(NP_FLOAT_DTYPE).T
+                    data_y_i = self.client.get_array(output_files[i]).astype(NP_FLOAT_DTYPE).T
+                    data_x_i = self.prepare_snapshot_data(data_x_i)
+                    data_y_i = self.prepare_snapshot_data(data_y_i)
+                    self.data_list.append({'x': data_x_i, 'y': data_y_i})
+        elif self.cfg.client.backend == 'adios':
+            data_x_i, data_y_i = self.client.get_train_data_from_stream()
+            data_x_i = self.prepare_snapshot_data(data_x_i)
+            data_y_i = self.prepare_snapshot_data(data_y_i)
+            self.data_list.append(
+                    {'x': data_x_i, 'y':data_y_i}
+            )
+            if RANK == 0: log.info(f'[RANK {RANK}]: Found 1 new sample to read, will update dataloader')
         
-        # Read new files
-        output_files = self.client.get_file_list(f'outputs_rank_{RANK}')
-        input_files = self.client.get_file_list(f'inputs_rank_{RANK}')
-        if self.cfg.time_dependency == "time_independent":
-            for i in range(len(self.data_list),len(output_files)):
-                data_x = self.prepare_snapshot_data(input_files[i],3)
-                data_y = self.prepare_snapshot_data(output_files[i],1)
-                self.data_list.append({'x': data_x, 'y':data_y})
-        elif self.cfg.time_dependency == "time_dependent":
-            for i in range(len(self.data_list),len(output_files)):
-                data_x_i = self.prepare_snapshot_data(input_files[i],3)
-                data_y_i = self.prepare_snapshot_data(output_files[i],3)
-                self.data_list.append({'x': data_x_i, 'y':data_y_i})
         data = {'train': [], 'validation': []}
         data['train'] = list(self.data_list)
         data['validation'] = [{}]

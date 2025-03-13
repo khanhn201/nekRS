@@ -214,17 +214,60 @@ void gnn_t::gnnWriteDB(smartredis_client_t* client)
     //                SRTensorTypeInt32, SRMemLayoutContiguous);
 
     // Writing some graph statistics
-    client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
-                    SRTensorTypeInt32, SRMemLayoutContiguous);
+    //client->_client->put_tensor("Nelements" + irank + nranks, &mesh->Nelements, {1},
+    //                SRTensorTypeInt32, SRMemLayoutContiguous);
     client->_client->put_tensor("Np" + irank + nranks, &mesh->Np, {1},
                     SRTensorTypeInt32, SRMemLayoutContiguous);
-    client->_client->put_tensor("N" + irank + nranks, &N, {1},
-                    SRTensorTypeInt32, SRMemLayoutContiguous);
+    //client->_client->put_tensor("N" + irank + nranks, &N, {1},
+    //                SRTensorTypeInt32, SRMemLayoutContiguous);
 
     MPI_Barrier(comm);
     if (verbose) printf("[RANK %d] -- done sending graph data to DB \n", rank);
 }
 #endif // NEKRS_ENABLE_SMARTREDIS
+
+void gnn_t::gnnWriteADIOS(adios_client_t* client)
+{
+    if (verbose) printf("[RANK %d] -- in gnnWriteADIOS() \n", rank);
+    MPI_Comm &comm = platform->comm.mpiComm;
+    unsigned long _size = size;
+    unsigned long _rank = rank;
+    unsigned long _N = N;
+    unsigned long _num_edges = num_edges;
+
+    // Define ADIOS2 variables to send
+    //auto posFloats = client->_stream_io.DefineVariable<dfloat>("pos_node", {_size * _N * 3}, {_rank * _N * 3}, {_N * 3});
+    //auto locInts = client->_stream_io.DefineVariable<dlong>("local_unique_mask", {_size * _N}, {_rank * _N}, {_N});
+    //auto haloInts = client->_stream_io.DefineVariable<dlong>("halo_unique_mask", {_size * _N}, {_rank * _N}, {_N});
+    //auto globInts = client->_stream_io.DefineVariable<hlong>("global_ids", {_size * _N}, {_rank * _N}, {_N});
+    //auto edgeInts = client->_stream_io.DefineVariable<dlong>("edge_index", {_size * 2 * _num_edges}, {_rank * 2 * _num_edges}, {2 * _num_edges});
+    //auto NpInts = client->_stream_io.DefineVariable<dlong>("Np", {1}, {1}, {1});
+    auto posFloats = client->_write_io.DefineVariable<dfloat>("pos_node", {_size * _N * 3}, {_rank * _N * 3}, {_N * 3});
+    auto locInts = client->_write_io.DefineVariable<dlong>("local_unique_mask", {_size * _N}, {_rank * _N}, {_N});
+    auto haloInts = client->_write_io.DefineVariable<dlong>("halo_unique_mask", {_size * _N}, {_rank * _N}, {_N});
+    auto globInts = client->_write_io.DefineVariable<hlong>("global_ids", {_size * _N}, {_rank * _N}, {_N});
+    auto edgeInts = client->_write_io.DefineVariable<dlong>("edge_index", {_size * 2 * _num_edges}, {_rank * 2 * _num_edges}, {2 * _num_edges});
+    auto NpInts = client->_write_io.DefineVariable<dlong>("Np", {1}, {1}, {1});
+
+    // Write the graph data
+    //adios2::Engine graphWriter = client->_stream_io.Open("graphStream", adios2::Mode::Write);
+    adios2::Engine graphWriter = client->_write_io.Open("graph.bp", adios2::Mode::Write);
+    graphWriter.BeginStep();
+
+    graphWriter.Put<dfloat>(posFloats, pos_node);
+    graphWriter.Put<dlong>(locInts, local_unique_mask);
+    graphWriter.Put<dlong>(haloInts, halo_unique_mask);
+    graphWriter.Put<hlong>(globInts, mesh->globalIds);
+    graphWriter.Put<dlong>(edgeInts, edge_index);
+    if (rank == 0) {
+        graphWriter.Put<dlong>(NpInts, &mesh->Np);
+    }
+
+    graphWriter.EndStep();
+    graphWriter.Close();
+    MPI_Barrier(comm);
+    if (verbose and rank == 0) printf("[RANK %d] -- done sending graph data \n", rank);
+}
 
 void gnn_t::get_node_positions()
 {

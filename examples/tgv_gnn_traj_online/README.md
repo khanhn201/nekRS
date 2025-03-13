@@ -1,4 +1,4 @@
-# Online training of a time independent GNN surrogate model
+# Online training of a time dependent GNN surrogate model
 
 This example demonstrates how the `gnn`, `trajGen`, and `smartRedis` plugins can be used to create a distributed graph from the nekRS mesh and online train a GNN from a solution trajectory.
 The online workflow is set up using SmartSim and SmartRedis, as in the [turbChannel_smartredis](../turbChannel_smartredis/) example.
@@ -35,6 +35,7 @@ Specifically, make sure to set
 
 ```
 SYSTEM # the ALCF system to run on (aurora, polaris)
+DEPLOYMENT # the deployment strategy for the workflow (colocated, clustered)
 NEKRS_HOME # path to the nekRS install directory
 VENV_PATH # path to the Python venv activate script
 PROJ_ID # project name for the allocation

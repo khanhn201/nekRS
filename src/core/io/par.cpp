@@ -252,6 +252,9 @@ static std::vector<std::string> pressureKeys = {};
 static std::vector<std::string> mlKeys = {
     {"ssimDeployment"},
     {"ssimDbNodes"},
+    {"adiosEngine"},
+    {"adiosTransport"},
+    {"adiosStream"},
 };
 
 static std::vector<std::string> deprecatedKeys = {
@@ -2629,6 +2632,21 @@ void parseMLSection(const int rank, setupAide &options, inipp::Ini *ini)
   int ssimDbNodes;
   ini->extract("ml", "ssimDbNodes", ssimDbNodes);
   options.setArgs("SSIM DB NODES", std::to_string(ssimDbNodes));
+  
+  std::string adiosEngine;
+  if (ini->extract("ml", "adiosEngine", adiosEngine)) {
+    options.setArgs("ADIOS ML ENGINE", adiosEngine);
+  }
+  
+  std::string adiosTransport;
+  if (ini->extract("ml", "adiosTransport", adiosTransport)) {
+    options.setArgs("ADIOS ML TRANSPORT", adiosTransport);
+  }
+  
+  std::string adiosStream;
+  if (ini->extract("ml", "adiosStream", adiosStream)) {
+    options.setArgs("ADIOS ML STREAM", adiosStream);
+  }
 }
 
 void cleanupStaleKeys(const int rank, setupAide &options, inipp::Ini *ini)

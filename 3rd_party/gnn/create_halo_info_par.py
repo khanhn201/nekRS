@@ -154,70 +154,7 @@ def get_reduced_halo_ids(data_reduced) -> torch.Tensor:
             print(f'count={count}',flush=True)
             print(f'displ={displ}',flush=True)
         COMM.Allgatherv([halo_ids,MPI.LONG],[halo_ids_full,count,displ,MPI.LONG])
-    return halo_ids, halo_ids_full
-"""
-    # ~~~~ Generate the map back to original, non-reduced graph
-    if args.LOG=='debug': print('[RANK %d]: Demonstrating procedure for mapping back non-coincident to coincident graph' %(RANK), flush=True)
-    # Step 1: replace global id 0 with negative numbers 
-    gid = data.global_ids 
-    zero_indices = torch.where(gid == 0)[0]
-    consecutive_negatives = -1 * torch.arange(1, len(zero_indices) + 1)
-    gid[zero_indices] = consecutive_negatives
-    data.global_ids = gid
-    data_reduced.global_ids = gid[idx_keep]
-
-    # Step 2: Get QoIs 
-    # Get quantities from full graph (coincident nodes)  
-    lid = torch.tensor(range(data.x.shape[0]))
-    gid = data.global_ids
-    pos = data.pos
-
-    # Get quantities from reduced graph (no coincident nodes)  
-    lid_reduced = torch.tensor(range(data_reduced.x.shape[0]))
-    gid_reduced = data_reduced.global_ids
-    pos_reduced = data_reduced.pos
-
-    # Step 3: Sorting 
-    # Sort full graph based on global id
-    _, idx_sort = torch.sort(gid)
-    gid = gid[idx_sort]
-    lid = lid[idx_sort]
-    pos = pos[idx_sort]
-
-    # Sort reduced graph based on global id 
-    _, idx_sort_reduced = torch.sort(gid_reduced)
-    gid_reduced = gid_reduced[idx_sort_reduced]
-    lid_reduced = lid_reduced[idx_sort_reduced]
-    pos_reduced = pos_reduced[idx_sort_reduced]
-
-    # Step 4: Get the scatter assignments 
-    count = 0
-    scatter_ids = torch.zeros(data.x.shape[0], dtype=torch.int64)
-    scatter_ids[0] = count
-    for i in range(1,len(gid)):
-
-        gid_prev = gid[i-1]
-        gid_curr = gid[i]
-
-        if (gid_curr > gid_prev):
-            count += 1
-
-        scatter_ids[i] = count
-
-    # Step 5: Scatter back 
-    pos_recon = pos_reduced[scatter_ids]
-    
-    # Step 6: Un-sort, and compute error  
-    _, idx_sort = torch.sort(lid)
-    gid = gid[idx_sort]
-    lid = lid[idx_sort]
-    pos = pos[idx_sort]
-    pos_recon = pos_recon[idx_sort]
-
-    error = pos_recon - pos
-    COMM.Barrier()
-    if RANK == 0: print('Done making reduced graph \n', flush=True)
-"""
+    return halo_ids_full
 
 # Prepares the halo_info matrix for halo swap 
 def get_halo_info(data_reduced, halo_ids_full) -> list:
@@ -253,10 +190,10 @@ def get_halo_info(data_reduced, halo_ids_full) -> list:
         halo_ids_full = torch.cat([halo_ids_full, counts], dim=1)
 
         # Get the number of halo nodes for each rank
-        halo_info = []
+        #halo_info = []
         halo_ids_rank = halo_ids_full[halo_ids_full[:,2] == RANK]
         Nhalo_rank = torch.sum(halo_ids_rank[:,3] - 1)
-        halo_info.append(torch.zeros((Nhalo_rank,4), dtype=torch.int64))
+        #halo_info.append(torch.zeros((Nhalo_rank,4), dtype=torch.int64))
         #halo_info_glob = COMM.allgather(halo_info[0])
         Nhalo_rank_glob = COMM.allgather(Nhalo_rank)
         halo_info_glob = [torch.zeros((Nhalo_rank_glob[i],4), dtype=torch.int64) for i in range(SIZE)]
@@ -445,7 +382,7 @@ if __name__ == '__main__':
     data, data_reduced, idx_keep = make_reduced_graph()
 
     # Get halo_ids for reduced graph
-    halo_ids, halo_ids_full = get_reduced_halo_ids(data_reduced)
+    halo_ids_full = get_reduced_halo_ids(data_reduced)
 
     # Compute the halo_info
     if RANK == 0: print('Computing halo_info ...', flush=True)

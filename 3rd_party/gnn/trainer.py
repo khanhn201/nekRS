@@ -44,6 +44,7 @@ from scheduler import ScheduledOptim
 import gnn
 import graph_connectivity as gcon
 from client import OnlineClient
+import create_halo_info_par
 
 log = logging.getLogger(__name__)
 Tensor = torch.Tensor
@@ -640,29 +641,39 @@ class Trainer:
 
     def setup_halo(self):
         if self.cfg.verbose: log.info('[RANK %d]: Assembling halo_ids_list using reduced graph' %(RANK))
-        halo_info = None
         if SIZE > 1 and self.cfg.consistency:
             if not self.cfg.online:
-                main_path = self.cfg.gnn_outputs_path
-                #halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
-                halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
-                # Get list of neighboring processors for each processor
-                self.neighboring_procs = np.unique(halo_info[:,3])
-                n_nodes_local = self.data_reduced.pos.shape[0]
-                n_nodes_halo = halo_info.shape[0]                
+                path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
+                path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
+                path_to_halo_info = self.cfg.gnn_outputs_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE)
+                edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
+                edge_weight = 1.0/edge_freq 
+                node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
+                halo_info = torch.tensor(self.load_data(path_to_halo_info,extension='.npy'))
+            else:
+                halo_ids = create_halo_info_par.get_reduced_halo_ids(self.data_reduced)
+                halo_info_glob = create_halo_info_par.get_halo_info(self.data_reduced, halo_ids)
+                halo_info = halo_info_glob[RANK]
+                node_degree = create_halo_info_par.get_node_degree(self.data_reduced, halo_info)
+                edge_freq = create_halo_info_par.get_edge_weights(self.data_reduced, halo_info_glob)
+                edge_weight = 1.0/edge_freq 
+
+            self.neighboring_procs = np.unique(halo_info[:,3])
+            n_nodes_local = self.data_reduced.pos.shape[0]
+            n_nodes_halo = halo_info.shape[0]
             if self.cfg.verbose: log.info(f'[RANK {RANK}]: Found {len(self.neighboring_procs)} neighboring processes: {self.neighboring_procs}')
         else:
-            #print('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
             halo_info = torch.Tensor([0])
             n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = 0
-
-        #if self.cfg.verbose: log.info('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
+            edge_weight = torch.zeros(1)
+            node_degree = torch.zeros(1)
 
         self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
         self.data_reduced.n_nodes_halo = torch.tensor(n_nodes_halo, dtype=torch.int64)
         self.data_reduced.halo_info = halo_info
-
+        self.data_reduced.edge_weight = edge_weight
+        self.data_reduced.node_degree = node_degree
         return 
 
     def prepare_snapshot_data(self, data_x: np.ndarray):
@@ -953,40 +964,6 @@ class Trainer:
         elif self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0:
             data_dir = self.cfg.traj_data_path
             data, stats = self.load_initial_condition(data_dir)
-          
-        # Get data in reduced format (non-overlapping)
-        pos_reduced = self.data_reduced.pos
-
-        # Read in edge weights 
-        if self.cfg.consistency:
-            path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
-            #edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
-            edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
-            self.data_reduced.edge_weight = 1.0/edge_freq
-
-            # Read in node degree
-            path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
-            #node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
-            node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
-            self.data_reduced.node_degree = node_degree
-
-            # Add halo nodes by appending the end of the node arrays  
-            n_nodes_halo = self.data_reduced.n_nodes_halo 
-            n_features_pos = pos_reduced.shape[1]
-            pos_halo = torch.zeros((n_nodes_halo, n_features_pos), dtype=TORCH_FLOAT_DTYPE)
-
-            #node_degree_halo = torch.zeros((n_nodes_halo), dtype=TORCH_FLOAT_DTYPE)
-
-            # # Add self-edges for halo nodes (unused) 
-            # n_nodes_local = self.data_reduced.n_nodes_local
-            # edge_index_halo = torch.arange(n_nodes_local, n_nodes_local + n_nodes_halo, dtype=torch.int64)
-            # edge_index_halo = torch.stack((edge_index_halo,edge_index_halo))
-
-            # Add filler edge weights for these self-edges 
-            edge_weight_halo = torch.zeros(n_nodes_halo)
-        else:
-            self.data_reduced.edge_weight = torch.zeros(1)
-            self.data_reduced.node_degree = torch.zeros(1)
 
         # Populate data object 
         #data_x_reduced = data['train'][0]['x']
@@ -1003,6 +980,9 @@ class Trainer:
         for key in reduced_graph_dict.keys():
             data_graph[key] = reduced_graph_dict[key]
         if self.cfg.consistency:
+            n_nodes_halo = self.data_reduced.n_nodes_halo 
+            n_features_pos = self.data_reduced.pos.shape[1]
+            pos_halo = torch.zeros((n_nodes_halo, n_features_pos), dtype=TORCH_FLOAT_DTYPE)
             data_graph.pos = torch.cat((data_graph.pos, pos_halo), dim=0)
         else:
             data_graph.pos = data_graph.pos

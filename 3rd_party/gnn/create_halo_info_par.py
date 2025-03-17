@@ -284,7 +284,7 @@ def get_edge_weights(data_reduced, halo_info_glob) -> torch.Tensor:
             COMM.Recv([tmp,MPI.INT],source=j)
             edge_index_nei_list.append(tmp)
         COMM.Barrier()
-        if RANK == 0: print('Communicated the edge_index arrays', flush=True)
+        #if RANK == 0: print('Communicated the edge_index arrays', flush=True)
         
         # Send/receive the global ids
         for j in neighboring_procs:
@@ -295,7 +295,7 @@ def get_edge_weights(data_reduced, halo_info_glob) -> torch.Tensor:
             COMM.Recv([tmp,MPI.INT],source=j)
             global_ids_nei_list.append(tmp)
         COMM.Barrier()
-        if RANK == 0: print('Communicated the global_ids arrays', flush=True)
+        #if RANK == 0: print('Communicated the global_ids arrays', flush=True)
 
         for i in range(len(neighboring_procs)):
             rank_own = RANK

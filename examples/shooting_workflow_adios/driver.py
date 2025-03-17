@@ -84,9 +84,10 @@ class ShootingWorkflow():
               f"-n {self.cfg.run_args.simprocs} " + \
               f"--ppn {self.cfg.run_args.simprocs_pn} " + \
               f"--cpu-bind {self.cfg.run_args.sim_cpu_bind} " + \
-              f"--hosts {self.sim_nodes} " + \
-              f"{self.cfg.sim.affinity} {self.cfg.run_args.simprocs_pn} " + \
-              f"{self.cfg.sim.executable} {self.cfg.sim.arguments}"
+              f"--hosts {self.sim_nodes} "
+        if self.cfg.sim.affinity:
+            cmd += f"{self.cfg.sim.affinity} {self.cfg.run_args.simprocs_pn} "
+        cmd += f"{self.cfg.sim.executable} {self.cfg.sim.arguments}"
         print("Launching nekRS ...")
         self.nekrs_proc['process'] = subprocess.Popen(cmd,
                                 executable="/bin/bash",
@@ -108,9 +109,10 @@ class ShootingWorkflow():
               f"-n {self.cfg.run_args.mlprocs} " + \
               f"--ppn {self.cfg.run_args.mlprocs_pn} " + \
               f"--cpu-bind {self.cfg.run_args.ml_cpu_bind} " + \
-              f"--hosts {self.train_nodes} " + \
-              f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} " + \
-              f"python {self.cfg.train.executable} {self.cfg.train.arguments}"
+              f"--hosts {self.train_nodes} "
+        if self.cfg.train.affinity:
+            cmd += f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} "
+        cmd += f"python {self.cfg.train.executable} {self.cfg.train.arguments}"
         print("Launching GNN training ...")
         self.train_proc['process'] = subprocess.Popen(cmd,
                                 executable="/bin/bash",
@@ -132,10 +134,11 @@ class ShootingWorkflow():
               f"-n {self.cfg.run_args.mlprocs} " + \
               f"--ppn {self.cfg.run_args.mlprocs_pn} " + \
               f"--cpu-bind {self.cfg.run_args.ml_cpu_bind} " + \
-              f"--hosts {self.train_nodes} " + \
-              f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} " + \
-              f"python {self.cfg.inference.executable} " + \
-              f"{self.cfg.inference.arguments} model_dir={self.run_dir}/saved_models/"
+              f"--hosts {self.train_nodes} "
+        if self.cfg.train.affinity:
+            cmd += f"{self.cfg.train.affinity} {self.cfg.run_args.simprocs_pn} {skip} "
+        cmd += f"python {self.cfg.inference.executable} " + \
+               f"{self.cfg.inference.arguments} model_dir={self.run_dir}/saved_models/"
         print("\nLaunching GNN inference ...")
         self.infer_proc['process'] = subprocess.Popen(cmd,
                                 executable="/bin/bash",

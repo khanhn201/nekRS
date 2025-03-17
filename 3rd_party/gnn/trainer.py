@@ -44,6 +44,7 @@ from scheduler import ScheduledOptim
 import gnn
 import graph_connectivity as gcon
 from client import OnlineClient
+import create_halo_info_par
 
 log = logging.getLogger(__name__)
 Tensor = torch.Tensor
@@ -87,12 +88,10 @@ if WITH_CUDA:
     DEVICE = torch.device('cuda')
     N_DEVICES = torch.cuda.device_count()
     DEVICE_ID = LOCAL_RANK if N_DEVICES>1 else 0
-    torch.cuda.set_device(DEVICE_ID)
 elif WITH_XPU:
     DEVICE = torch.device('xpu')
     N_DEVICES = torch.xpu.device_count()
     DEVICE_ID = LOCAL_RANK if N_DEVICES>1 else 0
-    torch.xpu.set_device(DEVICE_ID)
 else:
     DEVICE = torch.device('cpu')
     DEVICE_ID = 'cpu'
@@ -315,9 +314,6 @@ class Trainer:
 
         # Get the polynomial order -- for naming the model
         try:
-            main_path = self.cfg.gnn_outputs_path if not self.cfg.online else ''
-            #Np = np.loadtxt(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
-            #Np = self.load_data(main_path + "Np_rank_%d_size_%d" %(RANK, SIZE), dtype=np.float32)
             poly = np.cbrt(self.Np) - 1.
             poly = int(poly)
         except FileNotFoundError:
@@ -362,6 +358,10 @@ class Trainer:
         return scheduler
 
     def setup_torch(self):
+        if WITH_CUDA:
+            torch.cuda.set_device(DEVICE_ID)
+        elif WITH_XPU:
+            torch.xpu.set_device(DEVICE_ID+self.cfg.device_skip)
         torch.manual_seed(self.cfg.seed)
         np.random.seed(self.cfg.seed)
         torch.set_num_threads(self.cfg.num_threads)
@@ -621,7 +621,14 @@ class Trainer:
 
         # ~~~~ Make the full graph: 
         if self.cfg.verbose: log.info('[RANK %d]: Making the FULL GLL-based graph with overlapping nodes' %(RANK))
-        data_full = Data(x = None, edge_index = torch.tensor(ei), pos_orig = torch.tensor(pos_orig), pos = torch.tensor(pos), global_ids = torch.tensor(gli.squeeze()), local_unique_mask = torch.tensor(local_unique_mask), halo_unique_mask = torch.tensor(halo_unique_mask))
+        data_full = Data(x = None, 
+                         edge_index = torch.tensor(ei), 
+                         pos_orig = torch.tensor(pos_orig), 
+                         pos = torch.tensor(pos), 
+                         global_ids = torch.tensor(gli.squeeze()), 
+                         local_unique_mask = torch.tensor(local_unique_mask), 
+                         halo_unique_mask = torch.tensor(halo_unique_mask)
+        )
         data_full.edge_index = pyg_utils.remove_self_loops(data_full.edge_index)[0]
         data_full.edge_index = pyg_utils.coalesce(data_full.edge_index)
         data_full.edge_index = pyg_utils.to_undirected(data_full.edge_index)
@@ -639,30 +646,40 @@ class Trainer:
         return data_reduced, data_full, idx_full2reduced, idx_reduced2full
 
     def setup_halo(self):
-        if self.cfg.verbose: log.info('[RANK %d]: Assembling halo_ids_list using reduced graph' %(RANK))
-        main_path = self.cfg.gnn_outputs_path
-
-        halo_info = None
         if SIZE > 1 and self.cfg.consistency:
-            #halo_info = torch.tensor(np.load(main_path + '/halo_info_rank_%d_size_%d.npy' %(RANK,SIZE)))
-            halo_info = torch.tensor(self.load_data(main_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE),extension='.npy'))
-            # Get list of neighboring processors for each processor
+            if self.cfg.verbose: log.info('[RANK %d]: Assembling halo_ids_list using reduced graph' %(RANK))
+            if not self.cfg.online:
+                path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
+                path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
+                path_to_halo_info = self.cfg.gnn_outputs_path + '/halo_info_rank_%d_size_%d' %(RANK,SIZE)
+                edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
+                edge_weight = 1.0/edge_freq 
+                node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
+                halo_info = torch.tensor(self.load_data(path_to_halo_info,extension='.npy'))
+            else:
+                halo_ids = create_halo_info_par.get_reduced_halo_ids(self.data_reduced)
+                halo_info_glob = create_halo_info_par.get_halo_info(self.data_reduced, halo_ids)
+                halo_info = halo_info_glob[RANK]
+                node_degree = create_halo_info_par.get_node_degree(self.data_reduced, halo_info)
+                edge_freq = create_halo_info_par.get_edge_weights(self.data_reduced, halo_info_glob)
+                edge_weight = 1.0/edge_freq
+
             self.neighboring_procs = np.unique(halo_info[:,3])
             n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = halo_info.shape[0]
             if self.cfg.verbose: log.info(f'[RANK {RANK}]: Found {len(self.neighboring_procs)} neighboring processes: {self.neighboring_procs}')
         else:
-            #print('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
             halo_info = torch.Tensor([0])
             n_nodes_local = self.data_reduced.pos.shape[0]
             n_nodes_halo = 0
-
-        #if self.cfg.verbose: log.info('[RANK %d] neighboring procs: ' %(RANK), self.neighboring_procs)
+            edge_weight = torch.zeros(1)
+            node_degree = torch.zeros(1)
 
         self.data_reduced.n_nodes_local = torch.tensor(n_nodes_local, dtype=torch.int64)
         self.data_reduced.n_nodes_halo = torch.tensor(n_nodes_halo, dtype=torch.int64)
         self.data_reduced.halo_info = halo_info
-
+        self.data_reduced.edge_weight = edge_weight
+        self.data_reduced.node_degree = node_degree
         return 
 
     def prepare_snapshot_data(self, data_x: np.ndarray):
@@ -813,7 +830,7 @@ class Trainer:
             idx = list(range(len(files)))
             idx_x = idx[:-1]
             idx_y = idx[1:]
-            if RANK == 0: log.info("Loading trajectory data...")
+            if RANK == 0: log.info(f"Loading {len(files)} trajectory data files ...")
             for i in range(len(idx_x)):
                 step_x_i = idx_x[i]
                 step_y_i = idx_y[i]
@@ -953,40 +970,6 @@ class Trainer:
         elif self.cfg.model_task == 'inference' and self.cfg.rollout_steps > 0:
             data_dir = self.cfg.traj_data_path
             data, stats = self.load_initial_condition(data_dir)
-          
-        # Get data in reduced format (non-overlapping)
-        pos_reduced = self.data_reduced.pos
-
-        # Read in edge weights 
-        if self.cfg.consistency:
-            path_to_ew = self.cfg.gnn_outputs_path + '/edge_weights_rank_%d_size_%d' %(RANK,SIZE)
-            #edge_freq = torch.tensor(np.load(path_to_ew), dtype=TORCH_FLOAT_DTYPE)
-            edge_freq = torch.tensor(self.load_data(path_to_ew,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
-            self.data_reduced.edge_weight = 1.0/edge_freq
-
-            # Read in node degree
-            path_to_node_degree = self.cfg.gnn_outputs_path + '/node_degree_rank_%d_size_%d' %(RANK,SIZE)
-            #node_degree = torch.tensor(np.load(path_to_node_degree), dtype=TORCH_FLOAT_DTYPE)
-            node_degree = torch.tensor(self.load_data(path_to_node_degree,extension='.npy'), dtype=TORCH_FLOAT_DTYPE)
-            self.data_reduced.node_degree = node_degree
-
-            # Add halo nodes by appending the end of the node arrays  
-            n_nodes_halo = self.data_reduced.n_nodes_halo 
-            n_features_pos = pos_reduced.shape[1]
-            pos_halo = torch.zeros((n_nodes_halo, n_features_pos), dtype=TORCH_FLOAT_DTYPE)
-
-            #node_degree_halo = torch.zeros((n_nodes_halo), dtype=TORCH_FLOAT_DTYPE)
-
-            # # Add self-edges for halo nodes (unused) 
-            # n_nodes_local = self.data_reduced.n_nodes_local
-            # edge_index_halo = torch.arange(n_nodes_local, n_nodes_local + n_nodes_halo, dtype=torch.int64)
-            # edge_index_halo = torch.stack((edge_index_halo,edge_index_halo))
-
-            # Add filler edge weights for these self-edges 
-            edge_weight_halo = torch.zeros(n_nodes_halo)
-        else:
-            self.data_reduced.edge_weight = torch.zeros(1)
-            self.data_reduced.node_degree = torch.zeros(1)
 
         # Populate data object 
         #data_x_reduced = data['train'][0]['x']
@@ -1003,6 +986,9 @@ class Trainer:
         for key in reduced_graph_dict.keys():
             data_graph[key] = reduced_graph_dict[key]
         if self.cfg.consistency:
+            n_nodes_halo = self.data_reduced.n_nodes_halo 
+            n_features_pos = self.data_reduced.pos.shape[1]
+            pos_halo = torch.zeros((n_nodes_halo, n_features_pos), dtype=TORCH_FLOAT_DTYPE)
             data_graph.pos = torch.cat((data_graph.pos, pos_halo), dim=0)
         else:
             data_graph.pos = data_graph.pos
@@ -1088,7 +1074,7 @@ class Trainer:
             # Check if new files are available to read
             num_files = self.client.get_file_list_length(f'outputs_rank_{RANK}')
             num_new_files = num_files - len(self.data_list)
-            if num_new_files == 0:
+            if num_new_files <= 0:
                 if RANK == 0: log.info(f'[RANK {RANK}]: No new files to read, did not update dataloader')
                 return
             else:
@@ -1229,7 +1215,7 @@ class Trainer:
             graph.node_degree = graph.node_degree.to(self.device)
             loss = loss.to(self.device)
         if self.cfg.timers: self.update_timer('dataTransfer', self.timer_step, time.time() - tic)
-                
+
         self.s_optimizer.zero_grad()
 
         # re-allocate send buffer 

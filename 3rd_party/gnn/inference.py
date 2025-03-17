@@ -64,12 +64,10 @@ if WITH_DDP:
         DEVICE = torch.device('cuda')
         N_DEVICES = torch.cuda.device_count()
         DEVICE_ID = LOCAL_RANK if N_DEVICES>1 else 0
-        torch.cuda.set_device(DEVICE_ID)
     elif WITH_XPU:
         DEVICE = torch.device('xpu')
         N_DEVICES = torch.xpu.device_count()
         DEVICE_ID = LOCAL_RANK if N_DEVICES>1 else 0
-        torch.xpu.set_device(DEVICE_ID)
     else:
         DEVICE = torch.device('cpu')
         DEVICE_ID = 'cpu'

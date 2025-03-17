@@ -63,12 +63,10 @@ if WITH_DDP:
         DEVICE = torch.device('cuda')
         N_DEVICES = torch.cuda.device_count()
         DEVICE_ID = LOCAL_RANK if N_DEVICES>1 else 0
-        torch.cuda.set_device(DEVICE_ID)
     elif WITH_XPU:
         DEVICE = torch.device('xpu')
         N_DEVICES = torch.xpu.device_count()
         DEVICE_ID = LOCAL_RANK if N_DEVICES>1 else 0
-        torch.xpu.set_device(DEVICE_ID)
     else:
         DEVICE = torch.device('cpu')
         DEVICE_ID = 'cpu'
@@ -193,7 +191,7 @@ def train(cfg: DictConfig,
 @hydra.main(version_base=None, config_path='./conf', config_name='config')
 def main(cfg: DictConfig) -> None:
     if cfg.verbose:
-        log.info(f'Hello from rank {RANK}/{SIZE}, local rank {LOCAL_RANK}, on device {DEVICE}:{DEVICE_ID} out of {N_DEVICES}.')
+        log.info(f'Hello from rank {RANK}/{SIZE}, local rank {LOCAL_RANK}, on device {DEVICE}:{DEVICE_ID+cfg.device_skip} out of {N_DEVICES}.')
     
     if RANK == 0:
         log.info('\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~')

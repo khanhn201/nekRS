@@ -150,9 +150,9 @@ def get_reduced_halo_ids(data_reduced) -> torch.Tensor:
 
         count = [halo_ids_shape_list[i]*halo_ids_full_width for i in range(SIZE)]
         displ = [sum(count[:i]) for i in range(SIZE)]
-        if args.LOG == 'debug' and RANK==0:
-            print(f'count={count}',flush=True)
-            print(f'displ={displ}',flush=True)
+        #if args.LOG == 'debug' and RANK==0:
+        #    print(f'count={count}',flush=True)
+        #    print(f'displ={displ}',flush=True)
         COMM.Allgatherv([halo_ids,MPI.LONG],[halo_ids_full,count,displ,MPI.LONG])
     return halo_ids_full
 
@@ -197,7 +197,6 @@ def get_halo_info(data_reduced, halo_ids_full) -> list:
         #halo_info_glob = COMM.allgather(halo_info[0])
         Nhalo_rank_glob = COMM.allgather(Nhalo_rank)
         halo_info_glob = [torch.zeros((Nhalo_rank_glob[i],4), dtype=torch.int64) for i in range(SIZE)]
-        if args.LOG == 'debug': print('[RANK %d]: halo info shape is ' %(RANK), halo_info_glob[RANK].shape, flush=True)
 
         # Loop through counts 
         halo_counts = [0]*SIZE
@@ -269,8 +268,8 @@ def get_edge_weights(data_reduced, halo_info_glob) -> torch.Tensor:
 
         # Get neighboring procs for this rank
         neighboring_procs = np.unique(halo_info_rank[:,3])
-        if args.LOG == 'debug': 
-            print(f'[RANK {RANK}]: Found {len(neighboring_procs)} neighboring procs.: {neighboring_procs}',flush=True)
+        #if args.LOG == 'debug': 
+        #    print(f'[RANK {RANK}]: Found {len(neighboring_procs)} neighboring procs.: {neighboring_procs}',flush=True)
         
         # Initialize edge weights 
         num_edges_own = sample.edge_index.shape[1]
@@ -406,7 +405,3 @@ if __name__ == '__main__':
     np.save(main_path + 'edge_weights_rank_%d_size_%d.npy' %(RANK,SIZE), edge_weights.numpy())
     COMM.Barrier()
     if RANK == 0: print('Done \n', flush=True)
-
-
-
-

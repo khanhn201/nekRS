@@ -61,6 +61,8 @@ echo "export FI_CXI_REQ_BUF_MIN_POSTED=6" >> $RFILE
 # echo "export FI_CXI_RX_MATCH_MODE=hardware" >> $RFILE
 echo "export FI_CXI_RX_MATCH_MODE=hybrid" >> $RFILE # required by parRSB
 
+echo -e "\nexport CCL_ALLTOALLV_MONOLITHIC_KERNEL=0" >> $RFILE
+
 echo -e "\n# Run nekRS" >>$RFILE
 echo "mpiexec -n ${TOTAL_RANKS} -ppn ${RANKS_PER_NODE} --cpu-bind=list:${CPU_BIND_LIST} -- $NEKRS_HOME/bin/nekrs --setup ${case} --backend ${NEKRS_BACKEND}" >> $RFILE
 

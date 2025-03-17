@@ -13,6 +13,7 @@ fp16_allreduce: False
 restart: False
 master_addr: none
 master_port: none
+device_skip: 0 # temporary workaround to skip GPU on a node
 
 # Modeling task
 model_task: "train"

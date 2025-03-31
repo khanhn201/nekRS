@@ -385,7 +385,8 @@ c-----------------------------------------------------------------------
       nxyzo8  = nxo*nyo*nzo
 
       ! only relevant for single shared file
-      offs0 = iHeaderSize + 4 + isize*cntg
+      offs0 = cntg ! cast to int*8
+      offs0 = iHeaderSize + 4 + isize*offs0
       strideB = nelB * nxyzo8*wdsizo
       stride  = cntg * nxyzo8*wdsizo
 
@@ -1328,7 +1329,8 @@ c-----------------------------------------------------------------------
       endif
 #endif
 
-      offs0   = iHeadersize + 4 + isize*nelgr
+      offs0   = nelgr ! cast to int*8
+      offs0   = iHeadersize + 4 + isize*offs0
       nxyzr8  = nxr*nyr*nzr
       strideB = nelBr* nxyzr8*wdsizr
       stride  = nelgr* nxyzr8*wdsizr

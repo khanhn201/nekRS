@@ -22,8 +22,6 @@ tiles_per_gpu=2
 
 chk_case $TOTAL_RANKS
 
-NEKRS_CACHE_BCAST=1
-
 #--------------------------------------
 # Generate the submission script
 SFILE=s.bin
@@ -55,12 +53,6 @@ echo "export NEKRS_GPU_MPI=$NEKRS_GPU_MPI" >>$SFILE
 echo "export OCCA_DPCPP_COMPILER_FLAGS=\"$OCCA_DPCPP_COMPILER_FLAGS\"" >> $SFILE
 
 echo "export FI_CXI_RX_MATCH_MODE=hybrid" >> $SFILE # required by parRSB
-
-echo "export NEKRS_CACHE_BCAST=$NEKRS_CACHE_BCAST" >>$SFILE
-echo "export NEKRS_LOCAL_TMP_DIR=/tmp/$USER" >>$SFILE
-if [ $NEKRS_CACHE_BCAST -eq 1 ]; then
-  echo "mpiexec -n $((qnodes * 2)) -ppn 2 --depth 52 --cpu-bind=depth mkdir -p \$NEKRS_LOCAL_TMP_DIR" >> $SFILE
-fi
 
 CMD=.lhelper
 echo "#!/bin/bash" > $CMD

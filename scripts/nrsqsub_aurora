@@ -54,6 +54,9 @@ echo "export OCCA_DPCPP_COMPILER_FLAGS=\"$OCCA_DPCPP_COMPILER_FLAGS\"" >> $SFILE
 
 echo "export FI_CXI_RX_MATCH_MODE=hybrid" >> $SFILE # required by parRSB
 
+# Temporary workaround while waiting on bugfix in runtime
+echo "export UR_L0_USE_COPY_ENGINE=0" >> $SFILE
+
 CMD=.lhelper
 echo "#!/bin/bash" > $CMD
 echo "gpu_id=\$(((PALS_LOCAL_RANKID / ${tiles_per_gpu}) % ${gpus_per_node}))" >> $CMD

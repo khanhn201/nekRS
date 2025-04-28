@@ -1,0 +1,51 @@
+#!/bin/bash
+set -a
+
+#... load the necessary modules here ...
+module restore
+module load frameworks
+module list
+#...
+
+#... set some environment variables
+NEKRS_BUILD_DIR=$PWD
+ENABLE_SMARTREDIS=ON
+export NEKRS_HOME=/flare/datascience/balin/Nek/nekRSv24/exe/nekrsv24_simai_frameworks
+export CC=mpicc
+export CXX=mpic++
+export FC=mpif77
+OCCA_CXX=icpx
+OCCA_CXXFLAGS="-O3 -g -fdebug-info-for-profiling -gline-tables-only"
+export SYCL_ROOT=${CMPROOT}/linux
+#...
+
+#... build SmartRedis if enabled
+if [ ${ENABLE_SMARTREDIS} == "ON" ]; then
+  if [ -f "$NEKRS_HOME/SmartRedis/install/lib64/libsmartredis.so" ]; then
+    echo -e "\033[35mFound SmartRedis at $NEKRS_HOME/SmartRedis/install/lib64/libsmartredis.so\033[m"
+  else
+    echo -e "\033[35mBuilding SmartRedis first ...\033[m"
+    if [ ! -d "$NEKRS_HOME" ]; then
+      mkdir -p $NEKRS_HOME
+    fi
+    cd $NEKRS_HOME
+    git clone https://github.com/rickybalin/SmartRedis.git
+    cd SmartRedis
+    pip install -e .
+    make lib
+    cd $NEKRS_BUILD_DIR
+    echo -e "\033[35mDone building SmartRedis\033[m"
+    echo
+  fi 
+fi
+#...
+
+#... build nekRS
+echo -e "\033[35mBuilding nekRS ...\033[m"
+if [ ${ENABLE_SMARTREDIS} == "ON" ]; then
+  ./build.sh -DCMAKE_INSTALL_PREFIX=$NEKRS_HOME -DENABLE_SMARTREDIS=ON -DSMARTREDIS_INSTALL_DIR=$NEKRS_HOME/SmartRedis/install
+else
+  ./build.sh -DCMAKE_INSTALL_PREFIX=$NEKRS_HOME
+fi
+#...
+

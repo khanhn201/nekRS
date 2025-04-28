@@ -11,6 +11,7 @@
 
 namespace nekrs
 {
+void forceLastStep();
 void setup(MPI_Comm commg_in,
            MPI_Comm comm_in,
            int buildOnly,
@@ -37,6 +38,7 @@ double writeInterval(void);
 std::tuple<double, double> dt(int tStep);
 double startTime(void);
 double endTime(void);
+void setEndTime(double time);
 int numSteps(void);
 void lastStep(int val);
 int lastStep(double time, int tstep, double elapsedTime);

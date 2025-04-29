@@ -249,14 +249,6 @@ static std::vector<std::string> occaKeys = {{"backend"}, {"deviceNumber"}, {"pla
 
 static std::vector<std::string> pressureKeys = {};
 
-static std::vector<std::string> mlKeys = {
-    {"ssimDeployment"},
-    {"ssimDbNodes"},
-    {"adiosEngine"},
-    {"adiosTransport"},
-    {"adiosStream"},
-};
-
 static std::vector<std::string> deprecatedKeys = {
     // deprecated filter params
     {"filtering"},
@@ -283,7 +275,6 @@ static std::vector<std::string> validSections = {
     {"scalar"},
     {"casedata"},
     {"cvode"},
-    {"ml"},
 };
 
 void makeStringsLowerCase()
@@ -302,7 +293,6 @@ void makeStringsLowerCase()
   lowerCase(pressureKeys);
   lowerCase(occaKeys);
   lowerCase(cvodeKeys);
-  lowerCase(mlKeys);
   lowerCase(validSections);
 }
 
@@ -372,9 +362,6 @@ const std::vector<std::string> &getValidKeys(const std::string &section)
   }
   if (section == "cvode") {
     return cvodeKeys;
-  } 
-  if (section == "ml") {
-    return mlKeys;
   } else {
     return nothing;
   }
@@ -2101,15 +2088,6 @@ void parseGeneralSection(const int rank, setupAide &options, inipp::Ini *ini)
   }
 }
 
-static std::vector<std::string> partitioners {
-  {"rcb+rsb"}, // Ideally this should just be `rsb` for consistency.
-  {"rcb"},
-  {"rib"},
-  {"uniformx"},
-  {"uniformy"},
-  {"uniformz"},
-};
-
 void parseMeshSection(const int rank, setupAide &options, inipp::Ini *ini)
 {
   if (ini->sections.count("mesh")) {
@@ -2148,8 +2126,7 @@ void parseMeshSection(const int rank, setupAide &options, inipp::Ini *ini)
 
     std::string meshPartitioner;
     if (ini->extract("mesh", "partitioner", meshPartitioner)) {
-      auto it = std::find(partitioners.begin(), partitioners.end(), meshPartitioner);
-      if (it == partitioners.end()) {
+      if (meshPartitioner != "rcb" && meshPartitioner != "rcb+rsb") {
         std::ostringstream error;
         error << "Could not parse mesh::partitioner = " << meshPartitioner;
         append_error(error.str());
@@ -2622,33 +2599,6 @@ void parseScalarSections(const int rank, setupAide &options, inipp::Ini *ini)
   }
 }
 
-void parseMLSection(const int rank, setupAide &options, inipp::Ini *ini)
-{
-  std::string ssimDeployment;
-  if (ini->extract("ml", "ssimDeployment", ssimDeployment)) {
-    options.setArgs("SSIM DB DEPLOYMENT", ssimDeployment);
-  }
-
-  int ssimDbNodes;
-  ini->extract("ml", "ssimDbNodes", ssimDbNodes);
-  options.setArgs("SSIM DB NODES", std::to_string(ssimDbNodes));
-  
-  std::string adiosEngine;
-  if (ini->extract("ml", "adiosEngine", adiosEngine)) {
-    options.setArgs("ADIOS ML ENGINE", adiosEngine);
-  }
-  
-  std::string adiosTransport;
-  if (ini->extract("ml", "adiosTransport", adiosTransport)) {
-    options.setArgs("ADIOS ML TRANSPORT", adiosTransport);
-  }
-  
-  std::string adiosStream;
-  if (ini->extract("ml", "adiosStream", adiosStream)) {
-    options.setArgs("ADIOS ML STREAM", adiosStream);
-  }
-}
-
 void cleanupStaleKeys(const int rank, setupAide &options, inipp::Ini *ini)
 {
   std::vector<std::string> sections = {"MESH", "PRESSURE", "VELOCITY", "SCALAR DEFAULT"};
@@ -2775,11 +2725,6 @@ void Par::parse(setupAide &options)
   if (ini->sections.count("cvode") || cvodeRequested) {
     options.setArgs("CVODE", "TRUE");
     parseCvodeSolver(rank, options, ini);
-  }
-
-  if (ini->sections.count("ml")) {
-    options.setArgs("ML", "TRUE");
-    parseMLSection(rank, options, ini);
   }
 
   cleanupStaleKeys(rank, options, ini);

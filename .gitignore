@@ -11,13 +11,3 @@ build/
 logfile
 *.dat
 .cache/
-
-# SmartSim/SmartRedis outputs
-*.out
-*.err
-*/outputs/
-*.colocated_launcher.sh
-*-db.log
-*.rdb
-
-

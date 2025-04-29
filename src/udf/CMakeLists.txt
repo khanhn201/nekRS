@@ -13,14 +13,11 @@ set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")
 
 #set(CMAKE_VERBOSE_MAKEFILE on)
 
-set(ENABLE_SMARTREDIS OFF CACHE BOOL "Enable SmartRedis support")
-
 set(INCLUDE_DIRS
   ${CASE_DIR}
   ${GSDIR}/gslib/include
   ${NEKRS_INSTALL_DIR}/occa/include
   ${NEKRS_INSTALL_DIR}/include
-  ${NEKRS_INSTALL_DIR}/include/lib
   ${NEKRS_INSTALL_DIR}/include/mesh
   ${NEKRS_INSTALL_DIR}/include/core
   ${NEKRS_INSTALL_DIR}/include/core/io
@@ -68,12 +65,8 @@ if(APPLE)
   target_link_options(udf PRIVATE "LINKER:-undefined,dynamic_lookup")
 endif()
 
-if (ENABLE_SMARTREDIS)
-  target_compile_definitions(udf PUBLIC NEKRS_ENABLE_SMARTREDIS)
-endif()
-
 foreach(LIB $ENV{NEKRS_UDF_LIBS})
- target_link_libraries(udf PRIVATE ${LIB})
+ target_link_libraries(udf PRIVATE ${LIB}) 
 endforeach()
 
 #foreach(PATH $ENV{NEKRS_UDF_RPATH})

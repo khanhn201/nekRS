@@ -1,5 +1,5 @@
 #!/bin/bash
-set -a
+set -e -a
 
 module load cmake
 

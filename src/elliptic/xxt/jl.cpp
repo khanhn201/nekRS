@@ -148,8 +148,9 @@ static void set_mat_ij(uint *ia, uint *ja, int nc, int nelt) {
   }
 }
 
-int jl_setup_aux(uint *ntot_, ulong **gids_, uint *nnz_, uint **ia_, uint **ja_,
-                 double **a_, elliptic_t *elliptic, elliptic_t *ellipticf) {
+void jl_setup_aux(uint *ntot_, ulong **gids_, uint *nnz_, uint **ia_,
+                  uint **ja_, double **a_, elliptic_t *elliptic,
+                  elliptic_t *ellipticf) {
   mesh_t *mesh = elliptic->mesh, *meshf = ellipticf->mesh;
   assert(mesh->Nelements == meshf->Nelements);
   uint nelt = meshf->Nelements, nc = mesh->Np;
@@ -179,20 +180,20 @@ int jl_setup_aux(uint *ntot_, ulong **gids_, uint *nnz_, uint **ia_, uint **ja_,
   uint *ia = *ia_ = tcalloc(uint, nnz), *ja = *ja_ = tcalloc(uint, nnz);
   check_alloc(ia), check_alloc(ja);
   set_mat_ij(ia, ja, nc, nelt);
-
-  return 0;
 }
 #undef check_alloc
 
-//==============================================================================
-// nekRS interface to JL solvers
-//
+/*
+ * nekRS interface to JL solvers.
+ */
 static struct comm c;
-static double *h_x = NULL, *h_b = NULL;
-static float *p_x = NULL, *p_b = NULL;
+static double *h_x = NULL;
+static double *h_b = NULL;
+static float *p_x = NULL;
+static float *p_b = NULL;
 static uint un;
 
-int jl_setup(MPI_Comm comm, uint n, const ulong *id, uint nnz,
+void jl_setup(MPI_Comm comm, uint n, const ulong *id, uint nnz,
              const uint *Ai, const uint *Aj, const double *A, uint null,
              uint verbose) {
   comm_init(&c, comm);
@@ -203,46 +204,29 @@ int jl_setup(MPI_Comm comm, uint n, const ulong *id, uint nnz,
   p_x = tcalloc(float, n);
   p_b = tcalloc(float, n);
 
-  sint err = xxt_setup(comm, n, id, nnz, Ai, Aj, A, null, verbose);
-
-  sint bfr;
-  comm_allreduce(&c, gs_int, gs_add, &err, 1, &bfr);
-  return err;
+  xxt_setup(&c, n, id, nnz, Ai, Aj, A, null, verbose);
 }
 
-int jl_solve(float *x, float *rhs) {
-  for (uint i = 0; i < un; i++)
-    h_b[i] = rhs[i];
-
-  sint err = xxt_solve(h_x, h_b);
-
-  for (uint i = 0; i < un; i++)
-    x[i] = h_x[i];
-
-  sint bfr;
-  comm_allreduce(&c, gs_int, gs_add, &err, 1, &bfr);
-  return err;
-}
-
-int jl_solve(occa::memory &o_x, occa::memory &o_rhs) {
+void jl_solve(occa::memory &o_x, occa::memory &o_rhs) {
   o_rhs.copyTo(p_b, un);
-  sint err = jl_solve(p_x, p_b);
-  o_x.copyFrom(p_x, un);
+  for (uint i = 0; i < un; i++)
+    h_b[i] = p_b[i];
 
-  return err;
+  xxt_solve(h_x, h_b);
+
+  for (uint i = 0; i < un; i++)
+    p_x[i] = h_x[i];
+  o_x.copyFrom(p_x, un);
 }
 
-int jl_free() {
-  sint err = xxt_free();
+void jl_free() {
+  xxt_free();
 
   free(h_x), h_x = NULL;
   free(h_b), h_b = NULL;
   free(p_x), p_x = NULL;
   free(p_b), p_b = NULL;
-
   un = 0;
 
-  sint bfr;
-  comm_allreduce(&c, gs_int, gs_add, &err, 1, &bfr);
-  return err;
+  comm_free(&c);
 }

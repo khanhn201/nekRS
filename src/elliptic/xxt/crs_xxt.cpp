@@ -1002,48 +1002,31 @@ void crs_free(struct xxt *data)
 }
 
 /*
- *  Interface to XXT and port to GPUs using OCCA
+ *  Expose XXT to nekRS.
  */
 static struct xxt *solver;
 
-int xxt_setup(MPI_Comm comm, uint n, const ulong *id, uint nnz, const uint *Ai,
-              const uint *Aj, const double *A, uint null, uint verbose) {
-  struct comm c;
-  comm_init(&c, comm);
-
-  if (c.id == 0) {
-    printf("XXT: Setup ...\n");
-    printf("n = %u, nnz = %u\n", n, nnz);
-    for (uint i = 0; i < n; i++) {
-      printf("id[%u] = %llu\n", i, id[i]);
-    }
-    fflush(stdout);
-  }
-
-  comm_barrier(&c);
+void xxt_setup(struct comm *c, uint n, const ulong *id, uint nnz, const uint *Ai,
+               const uint *Aj, const double *A, uint null, uint verbose) {
+  comm_barrier(c);
   double start = comm_time();
 
-  solver = crs_setup(n, id, nnz, Ai, Aj, A, null, &c);
+  solver = crs_setup(n, id, nnz, Ai, Aj, A, null, c);
   crs_stats(solver);
 
-  comm_barrier(&c);
-  if (c.id == 0 && verbose) {
-    printf("XXT: Setup done in %g s un = %d\n", comm_time() - start,
-           solver->un);
+  comm_barrier(c);
+  if (c->id == 0 && verbose) {
+    printf("XXT: Setup done in %g s\n", comm_time() - start);
     fflush(stdout);
   }
 
-  comm_free(&c);
-
-  return 0;
+  comm_free(c);
 }
 
-int xxt_solve(double *h_x, double *h_b) {
+void xxt_solve(double *h_x, double *h_b) {
   crs_solve(h_x, (struct xxt *)solver, h_b);
-  return 0;
 }
 
-int xxt_free() {
+void xxt_free() {
   crs_free(solver);
-  return 0;
 }

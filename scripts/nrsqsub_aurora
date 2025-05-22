@@ -70,8 +70,15 @@ echo "export SYCL_PI_LEVEL_ZERO_REUSE_DISCARDED_EVENTS=0" >> $SFILE
 
 # romio hint
 # https://docs.alcf.anl.gov/aurora/data-management/daos/daos-overview/?h=stripe#mpi-io-container-access
-echo "export MPICH_MPIIO_HINTS=\"romio_cb_write=enable:romio_cb_read=enable:cb_buffer_size=16777216:cb_config_list=*\\\\:8:striping_unit=2097152\"" >> $SFILE
+s=.romio_hint
+echo "romio_cb_write enable" > $s
+echo "romio_cb_read enable" >> $s
+echo "cb_buffer_size 16777216" >> $s
+echo "cb_config_list *:8" >> $s
+echo "striping_unit 2097152" >> $s # should matchchunk size
+echo "export ROMIO_HINTS=.romio_hint" >> $SFILE # MPIIO-hint is for cray
 echo "export MPICH_MPIIO_STATS=1" >> $SFILE
+
 
 CMD=.lhelper
 echo "#!/bin/bash" > $CMD

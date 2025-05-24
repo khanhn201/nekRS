@@ -61,6 +61,8 @@ static void (*nek_setup_ptr)(int *,
                              int *,
                              int *,
                              int *,
+                             int *,
+                             int *,
                              double *,
                              double *,
                              double *,
@@ -578,6 +580,8 @@ void set_usr_handles(const char *session_in, int verbose)
                             int *,
                             int *,
                             int *,
+                            int *,
+                            int *,
                             double *,
                             double *,
                             double *,
@@ -861,7 +865,16 @@ void buildNekInterface(int ldimt, int N, int np, setupAide &options)
       int nelgt, nelgv;
       const int ndim = 3;
       const std::string meshFile = options.getArgs("MESH FILE");
+
       re2::nelg(meshFile, nelgt, nelgv, MPI_COMM_SELF);
+      {
+        int nscale = 1;
+        platform->options.getArgs("MESH REFINEMENT SCALE", nscale);
+        if (nscale > 1) {
+          nelgt *= nscale;
+          nelgv *= nscale;
+        }
+      }
 
       int lelt = (nelgt / np) + 3;
       if (lelt > nelgt) {
@@ -1086,6 +1099,15 @@ int setup(int numberActiveFields)
 
   int nelgt, nelgv;
   re2::nelg(options->getArgs("MESH FILE"), nelgt, nelgv, platform->comm.mpiComm);
+  {
+    int nscale = 1;
+    options->getArgs("MESH REFINEMENT SCALE", nscale);
+    if (nscale > 1) {
+      nelgt *= nscale;
+      nelgv *= nscale;
+    }
+  }
+
   const int cht = (nelgt > nelgv) && nscal;
 
   auto boundaryIDMap = [&](bool vMesh = false) {
@@ -1101,12 +1123,27 @@ int setup(int numberActiveFields)
     return map;
   };
 
+  auto makeRefineSchedule = [&]() {
+    std::vector<std::string> list;
+    options->getArgs("MESH REFINEMENT SCHEDULE", list, ",");
+
+    std::vector<int> map;
+    for (auto &entry : list) {
+      map.push_back(std::stoi(entry));
+    }
+    return map;
+  };
+  auto meshRefineSchedule = makeRefineSchedule();
+  int meshRefineScheduleSize = meshRefineSchedule.size();
+
   auto bMapV = boundaryIDMap(true);
   int bMapVSize = bMapV.size();
   auto bMapT = boundaryIDMap();
   int bMapTSize = (cht) ? bMapT.size() : 0;
 
   (*nek_setup_ptr)(&velocityExists,
+                   meshRefineSchedule.data(),
+                   &meshRefineScheduleSize,
                    bMapV.data(),
                    &bMapVSize,
                    bMapT.data(),
@@ -1239,7 +1276,13 @@ int setup(int numberActiveFields)
   {
     hlong NelementsV = nekData.nelv;
     MPI_Allreduce(MPI_IN_PLACE, &NelementsV, 1, MPI_HLONG, MPI_SUM, platform->comm.mpiComm);
-    nekrsCheck(NelementsV != nelgv, MPI_COMM_SELF, EXIT_FAILURE, "%s\n", "Invalid element partitioning");
+    nekrsCheck(NelementsV != nelgv,
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "%s %lld %d\n",
+               "Invalid element partitioning",
+               NelementsV,
+               nelgv);
 
     if (cht) {
       hlong NelementsT = nekData.nelt;
@@ -1247,8 +1290,10 @@ int setup(int numberActiveFields)
       nekrsCheck(NelementsT <= NelementsV || NelementsT != nelgt,
                  MPI_COMM_SELF,
                  EXIT_FAILURE,
-                 "%s\n",
-                 "Invalid solid element partitioning");
+                 "%s %lld %d\n",
+                 "Invalid solid element partitioning",
+                 NelementsT,
+                 nelgt);
     }
   }
 

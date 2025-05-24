@@ -190,6 +190,7 @@ static std::vector<std::string> meshKeys = {
     {"connectivitytol"},
     {"boundaryidmapV"},
     {"boundaryidmap"},
+    {"refine"},
 };
 
 static std::vector<std::string> velocityKeys = {
@@ -2094,6 +2095,22 @@ void parseMeshSection(const int rank, setupAide &options, inipp::Ini *ini)
     std::string meshFile;
     if (ini->extract("mesh", "file", meshFile)) {
       options.setArgs("MESH FILE", meshFile);
+    }
+
+    std::string p_refineSchedule;
+    if (ini->extract("mesh", "refine", p_refineSchedule)) {
+      options.setArgs("MESH REFINEMENT SCHEDULE", p_refineSchedule);
+
+      int ncut = 1;
+      for (auto &&s : serializeString(p_refineSchedule, ',')) {
+        ncut *= std::stoi(s);
+      }
+      if (ncut > 1) {
+        int ndim = 3;
+        int scale = static_cast<int>(std::pow(ncut, ndim));
+        options.setArgs("MESH REFINEMENT NCUT", std::to_string(ncut));
+        options.setArgs("MESH REFINEMENT SCALE", std::to_string(scale));
+      }
     }
 
     parseLinearSolver(rank, options, ini, "mesh");

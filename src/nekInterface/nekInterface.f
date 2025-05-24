@@ -111,7 +111,7 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine nekf_setup(ifflow_in, 
+      subroutine nekf_setup(ifflow_in, refine, refineSize,
      $                      bIDMap, bIDMapSize, bIDtMap, bIDtMapSize,
      $                      npscal_in, idpss_in, p32, mpart, contol,
      $                      rho, mue, rhoCp, lambda, stsform) 
@@ -120,6 +120,9 @@ c-----------------------------------------------------------------------
       include 'TOTAL'
       include 'DOMAIN'
       include 'NEKINTF'
+
+      integer refineSize
+      integer refine(refineSize)
 
       integer bIDMapSize
       integer bIDtMapSize
@@ -250,6 +253,10 @@ c-----------------------------------------------------------------------
 
       if(nio.eq.0) write(6,*) 'call usrdat2'
       etime1 = dnekclock_sync()
+      do iref=1,refineSize
+        call usrdat2_oct(refine(iref))
+      enddo
+
       call usrdat2
       etime2 = dnekclock_sync()
       if(nio.eq.0) write(6,998) ' done :: usrdat2', etime2-etime1

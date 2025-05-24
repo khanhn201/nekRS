@@ -197,11 +197,13 @@ c-----------------------------------------------------------------------
       endif
 #endif
 
+      call ifill(boundaryID, -1, 6*lelv)
+      call ifill(boundaryIDt, -1, 6*lelt)
+
       ifld_bId = 2
       if(ifflow) ifld_bId = 1
       do iel = 1,nelv
       do ifc = 1,2*ndim
-         boundaryID(ifc,iel) = -1
          if(bc(5,ifc,iel,ifld_bId).gt.0) then
            boundaryID(ifc,iel) = bc(5,ifc,iel,ifld_bId)
            idx = ibsearch(bIDMap, bIDMapSize, bc(5,ifc,iel,ifld_bId))
@@ -216,7 +218,6 @@ c-----------------------------------------------------------------------
       if(nelgt.ne.nelgv) then 
         do iel = 1,nelt
         do ifc = 1,2*ndim
-         boundaryIDt(ifc,iel) = -1
          if(bc(5,ifc,iel,2).gt.0) then
            boundaryIDt(ifc,iel) = bc(5,ifc,iel,2)
            idx = ibsearch(bIDtMap, bIDtMapSize, bc(5,ifc,iel,2))

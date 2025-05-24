@@ -143,6 +143,22 @@ c     ADD MORE ITEMS, as needed
       return
       end
 c-----------------------------------------------------------------------
+      subroutine fczero(f,e)
+      include 'SIZE'
+      include 'TOTAL'
+
+      integer f,e
+
+      do kf=0,nfield
+          cbc(f,e,kf)='E  '
+          call rzero(bc(1,f,e,kf),5)
+      enddo
+      boundaryID(f,e)=0
+      boundaryIDt(f,e)=0
+
+      return
+      end
+c-----------------------------------------------------------------------
       subroutine nek_init_2
 c
       include 'SIZE'
@@ -309,16 +325,15 @@ c         Note - we also should extract midside nodes.
           enddo
           enddo
 
-          do kf=0,nfield
-              if (er.gt.1)    cbc(4,en,kf)='E  '  ! r-boundaries (face=4,2)
-              if (er.lt.ncut) cbc(2,en,kf)='E  '
-              if (es.gt.1)    cbc(1,en,kf)='E  '  ! s-boundaries (face=1,3)
-              if (es.lt.ncut) cbc(3,en,kf)='E  '
-              if (ldim.eq.3) then
-                 if (et.gt.1)    cbc(5,en,kf)='E  '  ! t-boundaries (face=5,6)
-                 if (et.lt.ncut) cbc(6,en,kf)='E  '
-              endif
-          enddo
+          if (er.gt.1)    call fczero(4,en)  ! r-boundaries (face=4,2)
+          if (er.lt.ncut) call fczero(2,en)
+          if (es.gt.1)    call fczero(1,en)  ! s-boundaries (face=1,3)
+          if (es.lt.ncut) call fczero(3,en)
+          if (ldim.eq.3) then
+             if (et.gt.1)    call fczero(5,en)  ! t-boundaries (face=5,6)
+             if (et.lt.ncut) call fczero(6,en)
+          endif
+
 c         NOW, we have a periodicty problem to resolve...
 c         I think, however, that we already have the correct vertex topology
               

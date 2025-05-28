@@ -867,16 +867,16 @@ void buildNekInterface(int ldimt, int N, int np, setupAide &options)
       const std::string meshFile = options.getArgs("MESH FILE");
 
       re2::nelg(meshFile, nelgt, nelgv, MPI_COMM_SELF);
+      int lelt = (nelgt / np) + 3;
       {
         int nscale = 1;
         platform->options.getArgs("MESH REFINEMENT SCALE", nscale);
         if (nscale > 1) {
           nelgt *= nscale;
           nelgv *= nscale;
+          lelt *= nscale;
         }
       }
-
-      int lelt = (nelgt / np) + 3;
       if (lelt > nelgt) {
         lelt = nelgt;
       }

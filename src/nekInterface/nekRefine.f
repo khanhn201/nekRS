@@ -233,6 +233,8 @@ c                                   ncut = 4 --> 64x number of elements
       lxyc = 2**ldim
       nvrt = ncut+1
 
+      if (nio.eq.0) write(6,12) nblk
+ 12      format('h-refine: split each element into',I12)
 c     CHECK limit sizes 
 
       call lim_chk(nblk,mxnew,'nblk ','mxnew',' h_refine ')

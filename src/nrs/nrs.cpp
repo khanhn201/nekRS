@@ -532,6 +532,8 @@ void nrsSetDefaultSettings(setupAide *options)
   options->setArgs("PRESSURE VISCOUS TERMS", "TRUE");
 
   options->setArgs("VARIABLE DT", "FALSE");
+
+  options->setArgs("LINEAR SOLVER STOPPING CRITERION TYPE", "LEGACY");
 }
 
 nrs_t::nrs_t()

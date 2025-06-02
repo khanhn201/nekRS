@@ -126,6 +126,7 @@ void ciSetup(MPI_Comm comm, setupAide &options)
   options.setArgs("LINEAR SOLVER STOPPING CRITERION TYPE", "L2_RESIDUAL");
   options.setArgs("PRESSURE INITIAL GUESS", "PREVIOUS");
 
+  options.setArgs("VELOCITY SOLVER", "PCG+COMBINED");
   options.setArgs("VELOCITY BLOCK SOLVER", "FALSE");
 
   options.setArgs("SCALAR INITIAL GUESS", "PREVIOUS");

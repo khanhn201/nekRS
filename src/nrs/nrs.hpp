@@ -253,8 +253,8 @@ public:
   void copyToNek(double time, int tstep, bool updateMesh = false);
   void copyToNek(double time, bool updateMesh = false);
 
-  void copyFromNek(double &time);
-  void copyFromNek();
+  void copyFromNek(double &time, bool updateMesh = false);
+  void copyFromNek(bool updateMesh = false);
   void getICFromNek();
 
 private:

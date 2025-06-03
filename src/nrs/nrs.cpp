@@ -1027,7 +1027,7 @@ void nrs_t::restartFromFiles(const std::string &restartStr)
   for (std::string fileStr : list) {
     if (!fileStr.empty()) {
       if (platform->comm.mpiRank == 0 && platform->verbose) {
-        printf("restarting string: |%s|\n", fileStr.c_str());
+        printf("restart string: |%s|\n", fileStr.c_str());
         fflush(stdout);
       }
       restartFromFile(fileStr);
@@ -1040,25 +1040,14 @@ void nrs_t::setIC()
   getICFromNek();
 
   if (!platform->options.getArgs("RESTART FILE NAME").empty()) {
-
     // split string with comma
-    std::string str0;
-    platform->options.getArgs("RESTART FILE NAME", str0);
+    std::string fileList;
+    platform->options.getArgs("RESTART FILE NAME", fileList);
     if (platform->comm.mpiRank == 0 && platform->verbose) {
-      printf("Initial restart string: |%s|\n", str0.c_str());
+      printf("Initial restart string: |%s|\n", fileList.c_str());
       fflush(stdout);
     }
-
-    std::vector<std::string> list = serializeString(str0, ',');
-    // multiple files
-    for (std::string str1 : list) {
-      if (platform->comm.mpiRank == 0 && platform->verbose) {
-        printf("restarting string: |%s|\n", str1.c_str());
-        fflush(stdout);
-      }
-
-      restartFromFiles(str1);
-    }
+    restartFromFiles(fileList);
   }
 
   double startTime;

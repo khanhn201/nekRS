@@ -785,7 +785,7 @@ void ciCheckpointing(nrs_t *nrs)
   run("NEK", "ethier0.f00001+U+P+T+S");
 
   breakMeshMesh(); // force loading mesh from restart
-  run("NEK", "ethier0.f00000+X, ethier0.f00001+U+P+S", true);
+  run("NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
 
   run("ADIOS", "ethier.bp");
   run("ADIOS", "ethier.bp+int", true);

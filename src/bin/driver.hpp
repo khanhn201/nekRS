@@ -97,7 +97,7 @@ cmdOptions* processCmdLineOptions(int argc, char** argv, const MPI_Comm &comm)
         {"attach", no_argument, 0, 'a'},
         {"backend", required_argument, 0, 't'},
         {"device-id", required_argument, 0, 'i'},
-        {"redirectOutput", required_argument, 0, 'r'},
+        {"output", required_argument, 0, 'r'},
         {"help", optional_argument, 0, 'h'},
         {0, 0, 0, 0}
       };
@@ -204,8 +204,8 @@ cmdOptions* processCmdLineOptions(int argc, char** argv, const MPI_Comm &comm)
                   << "[ --help <par|env> ] "
                   << "--setup <par|sess file> "
                   << "[ --build-only <#procs> ] [ --cimode <id> ] [ --debug ] [ --attach ] "
-                  << "[ --backend <CPU|CUDA|HIP|DPCPP|OPENCL> ] [ --device-id <id|LOCAL-RANK> ]"
-                  << "[ --redirectOutput <local-path-to-logfile>]"
+                  << "[ --backend <CPU|CUDA|HIP|DPCPP|OPENCL> ] [ --device-id <id|LOCAL-RANK> ] "
+                  << "[ --output <local-path-to-logfile>]"
                   << "\n";
       }
     }

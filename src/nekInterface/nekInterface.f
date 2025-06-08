@@ -1288,8 +1288,8 @@ c-----------------------------------------------------------------------
 
       call mfi_prepare(fname)       ! determine reader nodes +
                                     ! read hdr + element mapping 
-      ifiocrystal = .false.
-      if (use_cr_.ne.0) ifiocrystal = .true.
+      ifcrrs = .false.
+      if (use_cr_.ne.0) ifcrrs = .true.
 
       time_ = timer
       p0th_ = p0th
@@ -1342,7 +1342,7 @@ c-----------------------------------------------------------------------
       integer*8 win_size
 
 #ifdef MPI
-      if (ifiocrystal) then
+      if (ifcrrs) then
         call fgslib_crystal_setup(cr_mfi,nekcomm,np)
         cr_etime1 = 0.0
         cr_etime2 = 0.0
@@ -1414,7 +1414,7 @@ c-----------------------------------------------------------------------
       call err_chk(ierr,'Error closing restart file, in mfi.$')
 
 #ifdef MPI
-      if (ifiocrystal) then
+      if (ifcrrs) then
         if(nio.eq.0) write(6,31) cr_etime1,cr_etime2,cr_etime3
         call fgslib_crystal_free(cr_mfi)
       endif

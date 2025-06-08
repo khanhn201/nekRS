@@ -134,7 +134,7 @@ fldData openFld(const std::string &filename, std::vector<std::string> &_availabl
   double time_;
   double p0th_;
 
-  int use_cr_ = options.compareArgs("CHEKPOINT READ USE CRYSTAL ROUTER ", "TRUE") ? 1 : 0;
+  int use_cr_ = platform->options.compareArgs("CHEKPOINT READ USE CRYSTAL ROUTER ", "TRUE") ? 1 : 0;
 
   (*nek_openfld_ptr)(fname, &time_, &p0th_, &use_cr_);
 

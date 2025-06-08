@@ -36,7 +36,7 @@ static void (*nek_outfld_ptr)(char *,
                               double *,
                               int *,
                               int);
-static void (*nek_openfld_ptr)(char *, double *, double *, int);
+static void (*nek_openfld_ptr)(char *, double *, double *, int *);
 static void (*nek_readfld_ptr)(double *,
                                double *,
                                double *,
@@ -134,7 +134,9 @@ fldData openFld(const std::string &filename, std::vector<std::string> &_availabl
   double time_;
   double p0th_;
 
-  (*nek_openfld_ptr)(fname, &time_, &p0th_, static_cast<int>(filename.size()));
+  int use_cr_ = options.compareArgs("CHEKPOINT READ USE CRYSTAL ROUTER ", "TRUE") ? 1 : 0;
+
+  (*nek_openfld_ptr)(fname, &time_, &p0th_, &use_cr_);
 
   if (*ptr<int>("getxr")) {
     _availableVariables.push_back("mesh");
@@ -607,7 +609,7 @@ void set_usr_handles(const char *session_in, int verbose)
                              int *,
                              int))dlsym(handle, fname("nekf_outfld"));
   check_error(dlerror());
-  nek_openfld_ptr = (void (*)(char *, double *, double *, int))dlsym(handle, fname("nekf_openfld"));
+  nek_openfld_ptr = (void (*)(char *, double *, double *, int *))dlsym(handle, fname("nekf_openfld"));
   check_error(dlerror());
   nek_readfld_ptr =
       (void (*)(double *, double *, double *, double *, double *, double *, double *, double *, double *))

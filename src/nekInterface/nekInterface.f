@@ -1252,7 +1252,7 @@ c     Interpolate xm(m,m,m,...) to xn(n,n,n,...) (GLL-->GLL)
       end
 
 c-----------------------------------------------------------------------
-      subroutine nekf_openfld(fname_in, time_, p0th_)
+      subroutine nekf_openfld(fname_in, time_, p0th_, use_cr_)
       include 'mpif.h'
       include 'SIZE'
       include 'TOTAL'
@@ -1263,7 +1263,7 @@ c-----------------------------------------------------------------------
       real time_
       real p0th_
 
-      integer nps_
+      integer nps_, use_cr_
 
       character*132  fname
       character*1    fnam1(132)
@@ -1288,6 +1288,8 @@ c-----------------------------------------------------------------------
 
       call mfi_prepare(fname)       ! determine reader nodes +
                                     ! read hdr + element mapping 
+      ifiocrystal = .false.
+      if (use_cr_.ne.0) ifiocrystal = .true.
 
       time_ = timer
       p0th_ = p0th
@@ -1333,21 +1335,31 @@ c-----------------------------------------------------------------------
 
       common /nekmpi/ nid_,np_,nekcomm,nekgroup,nekreal
 
+      real*8 cr_etime1,cr_etime2,cr_etime3,etime0,dnekclock_sync
+      common /cr_rst_tmr/ cr_etime1,cr_etime2,cr_etime3
+
       integer   disp_unit
       integer*8 win_size
 
 #ifdef MPI
-      disp_unit = 4 
-      win_size  = int(disp_unit,8)*size(wk)
-      if (commrs .eq. MPI_COMM_NULL) then
-        call mpi_comm_dup(nekcomm,commrs,ierr)
-        call MPI_Win_create(wk,
-     $                      win_size,
-     $                      disp_unit,
-     $                      MPI_INFO_NULL,
-     $                      commrs,rsH,ierr)
+      if (ifiocrystal) then
+        call fgslib_crystal_setup(cr_mfi,nekcomm,np)
+        cr_etime1 = 0.0
+        cr_etime2 = 0.0
+        cr_etime3 = 0.0
+      else
+        disp_unit = 4
+        win_size  = int(disp_unit,8)*size(wk)
+        if (commrs .eq. MPI_COMM_NULL) then
+          call mpi_comm_dup(nekcomm,commrs,ierr)
+          call MPI_Win_create(wk,
+     $                        win_size,
+     $                        disp_unit,
+     $                        MPI_INFO_NULL,
+     $                        commrs,rsH,ierr)
 
-        if (ierr .ne. 0 ) call exitti('MPI_Win_allocate failed!$',0)
+          if (ierr .ne. 0 ) call exitti('MPI_Win_allocate failed!$',0)
+        endif
       endif
 #endif
 
@@ -1400,6 +1412,15 @@ c-----------------------------------------------------------------------
         if(nid.eq.pid0r) call byte_close(ierr)
       endif
       call err_chk(ierr,'Error closing restart file, in mfi.$')
+
+#ifdef MPI
+      if (ifiocrystal) then
+        if(nio.eq.0) write(6,31) cr_etime1,cr_etime2,cr_etime3
+        call fgslib_crystal_free(cr_mfi)
+      endif
+#endif
+
+  31  format(3x,'mfi:pack/cr/unpack :',3(1e9.2))
 
       return
       end

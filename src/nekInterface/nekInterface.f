@@ -1420,7 +1420,7 @@ c-----------------------------------------------------------------------
       endif
 #endif
 
-  31  format(3x,'mfi:pack/cr/unpack :',3(1e9.2))
+  31  format(3x,'nekf_readfld:pack/cr/unpack :',3(1e9.2))
 
       return
       end

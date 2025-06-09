@@ -759,9 +759,10 @@ void ciTestSurfaceIntegral(nrs_t *nrs)
 
 void ciCheckpointing(nrs_t *nrs)
 {
-  auto run = [&](const std::string& engine, const std::string& restartFile, bool readOnly = false) 
+  auto run = [&](const std::string &tag, const std::string& engine, const std::string& restartFile, bool readOnly = false)
   {
-    const auto tol = 10 * std::numeric_limits<float>::epsilon();
+    auto FP64 = platform->options.compareArgs("CHECKPOINT PRECISION", "FP64");
+    const auto tol = (FP64) ? 10 * std::numeric_limits<double>::epsilon() : 10 * std::numeric_limits<float>::epsilon();
     const double time = 0.123; // just for testing, actual solution is based on t==0
 
     if (!readOnly) {
@@ -786,16 +787,16 @@ void ciCheckpointing(nrs_t *nrs)
     nek::userchk();
  
     auto err = nek::ptr<double>("errors");
-    CiEvalTest("velocity", err[0] < tol);
-    CiEvalTest("pressure", err[1] < tol);
-    CiEvalTest("scalar00", err[2] < tol);
-    CiEvalTest("scalar01", err[3] < tol);
-    CiEvalTest("time", std::abs(startTime- time) < tol);
+    CiEvalTest(tag + " velocity", err[0] < tol);
+    CiEvalTest(tag + " pressure", err[1] < tol);
+    CiEvalTest(tag + " scalar00", err[2] < tol);
+    CiEvalTest(tag + " scalar01", err[3] < tol);
+    CiEvalTest(tag + " time", std::abs(startTime- time) < tol);
 
     nrs->checkpointWriter.reset();
   };
 
-  auto destroyMesh = [&]() {
+  auto breakMesh = [&]() {
     auto mesh = (nrs->cht) ? nrs->cds->mesh[0] : nrs->mesh;
 
     platform->linAlg->fill(mesh->Nlocal, -0.12, mesh->o_x);
@@ -811,28 +812,39 @@ void ciCheckpointing(nrs_t *nrs)
   };
 
   if (ciMode==23) {
-    run("NEK", "ethier0.f00000");
-    run("NEK", "ethier0.f00001+U+P+T+S");
+    platform->options.setArgs("CHECKPOINT PRECISION", "FP64");
+    platform->options.setArgs("CHECKPOINT OUTPUT MESH", "TRUE");
+    run("1", "NEK", "ethier0.f00000"); // FP64, with mesh
+    platform->options.setArgs("CHECKPOINT PRECISION", "FP32");
 
-    destroyMesh(); // force loading mesh from restart
-    run("NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
+    run("2", "NEK", "ethier0.f00001"); // FP32, with mesh
+    platform->options.setArgs("CHECKPOINT OUTPUT MESH", "FALSE");
+    run("3", "NEK", "ethier0.f00001+U+P+T+S", true);
 
-    run("ADIOS", "ethier.bp");
-    run("ADIOS", "ethier.bp+int", true);
+    breakMesh(); // force loading mesh from restart
+    run("4", "NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
+
+    platform->options.setArgs("CHECKPOINT READ USE CRYSTAL ROUTER", "TRUE");
+    run("5", "NEK", "ethier0.f00001", true); // FP32
+    run("6", "NEK", "ethier0.f00000", true); // FP64
+    platform->options.setArgs("CHECKPOINT READ USE CRYSTAL ROUTER", "FALSE");
+
+    run("7", "ADIOS", "ethier.bp");
+    run("8", "ADIOS", "ethier.bp+int", true);
   }
 
   if (ciMode==25) {
     platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0"); // TODO
-    run("NEK", "ethierRefine0.f00000");
+    run("1", "NEK", "ethierRefine0.f00000");
     //platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0");
     //run("NEK", "ref22.fld",true);
     platform->options.setArgs("MESH REFINEMENT SCHEDULE", "2");
-    run("NEK", "ref0.fld+U+P+S",true);
-    destroyMesh(); // force loading mesh from restart
-    run("NEK", "ref0.fld",true); // TODO multi file
+    run("2", "NEK", "ref0.fld+U+P+S",true);
+    breakMesh(); // force loading mesh from restart
+    run("3", "NEK", "ref0.fld",true); // TODO multi file
 
     platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0"); // TODO
-    run("NEK", "ethierRefine0.f00001");
+    run("4", "NEK", "ethierRefine0.f00001");
   }
 }
 

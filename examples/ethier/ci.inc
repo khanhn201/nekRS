@@ -320,6 +320,33 @@ void ciSetup(MPI_Comm comm, setupAide &options)
     options.setArgs("END TIME", std::string("0"));
     options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
   }
+
+  // refine
+  if (ciMode == 24) {
+    options.setArgs("MESH REFINEMENT SCHEDULE", "2,2");
+    options.setArgs("DT", std::string("5e-4"));
+    options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
+    std::string casename = platform->options.getArgs("CASENAME");
+    nekrsCheck(casename != "ethierRefine",
+               platform->comm.mpiComm,
+               EXIT_FAILURE,
+               "Unexpected input file for CI mode %d\n",
+               ciMode);
+  }
+  // refine + checkpoint
+  if (ciMode == 25) {
+    //options.setArgs("MESH REFINEMENT SCHEDULE", "2,2"); // TODO
+    options.setArgs("MESH REFINEMENT SCHEDULE", "4");
+    options.setArgs("NUMBER TIMESTEPS", std::string("0"));
+    options.setArgs("END TIME", std::string("0"));
+    options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
+    std::string casename = platform->options.getArgs("CASENAME");
+    nekrsCheck(casename != "ethierRefine",
+               platform->comm.mpiComm,
+               EXIT_FAILURE,
+               "Unexpected input file for CI mode %d\n",
+               ciMode);
+  }
 }
 
 auto generatePoints(int nPoints, double R)
@@ -740,12 +767,18 @@ void ciCheckpointing(nrs_t *nrs)
       nrs->writeCheckpoint(time, 0);
     }
 
+    // wipe out solutions
+    platform->linAlg->fill(nrs->NVfields * nrs->fieldOffset, 0.0, nrs->o_U);
+    if (nrs->Nscalar > 0) {
+      platform->linAlg->fill(nrs->cds->fieldOffsetSum, 0.0, nrs->cds->o_S);
+    }
+
     nrs->restartFromFile(restartFile); 
  
     double startTime;
     platform->options.getArgs("START TIME", startTime);
  
-    nrs->copyToNek(0.0, 0);
+    nrs->copyToNek(0.0, 0, true);
     nek::userchk();
  
     auto err = nek::ptr<double>("errors");
@@ -758,9 +791,43 @@ void ciCheckpointing(nrs_t *nrs)
     nrs->checkpointWriter.reset();
   };
 
-  run("NEK", "ethier0.f00000");
-  run("ADIOS", "ethier.bp");
-  run("ADIOS", "ethier.bp+int", true);
+  auto destroyMesh = [&]() {
+    auto mesh = (nrs->cht) ? nrs->cds->mesh[0] : nrs->mesh;
+
+    platform->linAlg->fill(mesh->Nlocal, -0.12, mesh->o_x);
+    platform->linAlg->fill(mesh->Nlocal, -0.12, mesh->o_y);
+    platform->linAlg->fill(mesh->Nlocal, -0.12, mesh->o_z);
+
+    auto [x, y, z] = mesh->xyzHost(); // device to host
+    for (int i = 0; i < mesh->Nlocal; i++) {
+      nekData.xm1[i] = x[i];
+      nekData.ym1[i] = y[i];
+      nekData.zm1[i] = z[i];
+    }
+  };
+
+  if (ciMode==23) {
+    run("NEK", "ethier0.f00000");
+
+/*  
+    run("NEK", "ethier0.f00000");
+    run("NEK", "ethier0.f00001+U+P+T+S");
+
+    destroyMesh(); // force loading mesh from restart
+    run("NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
+*/  
+
+    run("ADIOS", "ethier.bp");
+    run("ADIOS", "ethier.bp+int", true);
+  }
+  if (ciMode==25) {
+    platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0"); // TODO
+    run("NEK", "ethierRefine0.f00000");
+    //platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0");
+    //run("NEK", "ref22.fld",true);
+    platform->options.setArgs("MESH REFINEMENT SCHEDULE", "4");
+    run("NEK", "ref0.fld",true);
+  }
 }
 
 void ciTestDistance(nrs_t *nrs)
@@ -979,7 +1046,7 @@ void ciTestErrors(nrs_t *nrs,
     return; // don't run the rest of the tests
   }
 
-  if (tstep == 1 && ciMode != 7 && ciMode != 13 && ciMode != 8) {
+  if (tstep == 1 && ciMode != 7 && ciMode != 13 && ciMode != 8 && ciMode != 24) { // TODO
     const auto NiterP = nrs->pSolver->Niter();
 
     int expectedNiterP = 7; 
@@ -1372,7 +1439,17 @@ void ciTestErrors(nrs_t *nrs,
     prTest = err[1] < 8e-4;
     break;
   }
-
+  case 24:
+  {
+    velIterTest = true; //abs(NiterU - 14) < 2; // TODO
+    s1Test = abs((err[2] - 5.42E-12) / err[2]) < EPS;
+    s2Test = abs((err[3] - 6.30E-12) / err[3]) < EPS;
+    pIterTest = true; //abs(NiterP - 6) < 2;
+    vxTest = abs((err[0] - 2.77E-10) / err[0]) < EPS;
+    prTest = abs((err[1] - 7.14E-10) / err[1]) < EPS;
+    break;
+  }
+ 
   }
 
   if (nrs->timeStepConverged) {

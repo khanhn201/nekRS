@@ -11,8 +11,16 @@ c     Note that lelt and lelg need to be LARGE enough
       integer*8 glo_num
 
       ncut_o = ncut
+      nelv_o = nelv
+      nelt_o = nelt
 
       call h_refine(glo_num,ncut_o)
+
+c     call h_refine_fld(vx,nelv_o,ncut_o)
+c     call h_refine_fld(vy,nelv_o,ncut_o)
+c     call h_refine_fld(vz,nelv_o,ncut_o)
+c
+c     call h_refine_fld(t,nelt_o,ncut_o)
 
 c     call outpost(xm1,ym1,zm1,pr,t,'   ')
 
@@ -56,7 +64,38 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine get_rst_m1(xb,yb,zb,ncut,x1,y1,z1,pc,pt)
+      subroutine set_interp_mat(ncut,pc,pt)
+      include 'SIZE'
+      include 'TOTAL'
+
+      real pc(lx1*lx1,ncut) ! Interpolation matrix
+      real pt(lx1*lx1,ncut)
+
+      common /qtmp0/ z_out(lx1),wk(lx1*lx1),wk2(lx1*lx1)
+
+      save ncut_save
+      data ncut_save /0/
+      ! TODO: assert ncut > 1
+      if (ncut.ne.ncut_save) then
+
+        dr = 2./ncut
+        do k=1,ncut
+          r0 = -1. + (k-1)*dr
+          do i=1,lx1
+            z_out(i) = r0 + dr*(zgm1(i,1)+1)/2.
+          enddo
+          call interp_mat(pc(1,k),z_out,lx1,zgm1,lx1,wk,wk2)
+          call transpose (pt(1,k),lx1,pc(1,k),lx1)
+        enddo
+
+        ncut_save = ncut
+
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine get_rst_m1_vec(xb,yb,zb,ncut,x1,y1,z1,pc,pt)
 
 c       call get_rst_m1(x0,y0,z0,ncut
 c    $                 ,xm1(1,1,1,e),ym1(1,1,1,e),zm1(1,1,1,e),pc,pt)
@@ -73,19 +112,6 @@ c    $                 ,xm1(1,1,1,e),ym1(1,1,1,e),zm1(1,1,1,e),pc,pt)
       real pt(lx1*lx1,ncut) ! Interpolation matrix
 
       common /qtmp0/ z_out(lx1),wk(lx1*lx1),wk2(lx1*lx1)
-
-c     if (pc(1,1).eq.0) then  ! Recompute interpolation matrices
-      if (lx1.gt.0)     then  ! Recompute interpolation matrices
-        dr = 2./ncut
-        do k=1,ncut
-          r0 = -1. + (k-1)*dr
-          do i=1,lx1
-            z_out(i) = r0 + dr*(zgm1(i,1)+1)/2.
-          enddo
-          call interp_mat(pc(1,k),z_out,lx1,zgm1,lx1,wk,wk2)
-          call transpose (pt(1,k),lx1,pc(1,k),lx1)
-        enddo
-      endif
 
       if (ldim.eq.3) then
 
@@ -113,6 +139,36 @@ c     if (pc(1,1).eq.0) then  ! Recompute interpolation matrices
        enddo
 
       endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine get_rst_m1_fld(ub,ncut,u1,pc,pt)
+
+      include 'SIZE'
+      include 'TOTAL'
+
+      real ub(lx1*ly1*lz1,ncut*ncut*ncut)
+
+      real u1(lx1*ly1*lz1)
+      real pc(lx1*lx1,ncut) ! Interpolation matrix
+      real pt(lx1*lx1,ncut) ! Interpolation matrix
+
+      common /qtmp0/ z_out(lx1),wk(lx1*lx1),wk2(lx1*lx1)
+
+      kcut=ncut
+      if (ldim.eq.2) kcut=1
+
+      lc=0
+      do kc=1,kcut
+      do jc=1,ncut
+      do ic=1,ncut
+         lc=lc+1
+         call tensr3(ub(1,lc),lx1,u1,lx1,pc(1,ic),pt(1,jc),pt(1,kc),wk)
+      enddo
+      enddo
+      enddo
+
       return
       end
 c-----------------------------------------------------------------------
@@ -175,7 +231,7 @@ c
       integer itest
       integer*8 itest8
       character ctest
-      logical ltest 
+      logical ltest
 
       common /c_is1/ glo_num(lx1 * ly1 * lz1, lelt)
       common /ivrtx/ vertex((2 ** ldim) * lelt)
@@ -193,7 +249,7 @@ c
       if (nsteps.eq.0 .and. fintim.eq.0.) instep=0
 
       igeom = 2
-      call setup_topo      ! Setup domain topology  
+      call setup_topo      ! Setup domain topology
 
       if (ifmvbd) call setup_mesh_dssum ! Set mesh dssum (needs geom)
 
@@ -223,6 +279,7 @@ c                                   ncut = 4 --> 64x number of elements
       integer*8 ngv
 
       integer ibuf(2)
+      integer iwork(lelt)
 
       integer isym2pre(8)   ! Symmetric-to-prenek vertex ordering
       save    isym2pre
@@ -235,7 +292,7 @@ c                                   ncut = 4 --> 64x number of elements
 
       if (nio.eq.0) write(6,12) nblk
  12      format('h-refine: split each element into',I12)
-c     CHECK limit sizes 
+c     CHECK limit sizes
 
       call lim_chk(nblk,mxnew,'nblk ','mxnew',' h_refine ')
 
@@ -245,13 +302,9 @@ c     CHECK limit sizes
       nelgt_new = nblk*nelgt
       call lim_chk(nelgt_new,lelg,'ngnew','lelg ',' h_refine ')
 
-      call rzero(pc,lx1*lx1)
+      call set_interp_mat(ncut,pc,pt)
 
       call set_vert(glo_num,ngv,nvrt,nelt,vertex,.true.) ! Get new vertex set
-
-#if defined(DPROCMAP)
-      call dProcMapClearCache()
-#endif
 
       do e=nelt,1,-1  ! REPLICATE EACH ELEMENT, working backward
 
@@ -259,8 +312,8 @@ c     CHECK limit sizes
 
         call elcopy(lelt,e) ! Save current element
 
-        call get_rst_m1(x0,y0,z0,ncut
-     $                 ,xm1(1,1,1,e),ym1(1,1,1,e),zm1(1,1,1,e),pc,pt)
+        call get_rst_m1_vec(x0,y0,z0,ncut
+     $           ,xm1(1,1,1,e),ym1(1,1,1,e),zm1(1,1,1,e),pc,pt)
 
 
         el = 0
@@ -278,17 +331,6 @@ c     CHECK limit sizes
           egn= egn+1
 
           call elcopy(en,lelt) ! Copy saved element e to en
-
-#if defined(DPROCMAP)
-          lglel(en) = egn
-          ibuf(1) = en
-          ibuf(2) = nid
-          call dProcmapPut(ibuf,2,0,eg)
-#else
-          lglel(en)  = egn
-          gllel(egn) = en      ! THIS PART MUST BE FIXED for scalability !
-          gllnid(eg) = nid
-#endif
 
           call copy(xm1(1,1,1,en),x0(1,el),lxyz)
           call copy(ym1(1,1,1,en),y0(1,el),lxyz)
@@ -336,25 +378,152 @@ c         Note - we also should extract midside nodes.
              if (et.lt.ncut) call fczero(6,en)
           endif
 
-c         NOW, we have a periodicty problem to resolve...
-c         I think, however, that we already have the correct vertex topology
-              
         enddo
         enddo
         enddo
 
       enddo
+
+      ! Update elements count
+      nelt0 = nelt
 
       nelt  = nblk*nelt
       nelv  = nblk*nelv
       nelgt = nblk*nelgt
       nelgv = nblk*nelgv
-
       do ifld=0,nfield
          nelfld(ifld)=nblk*nelfld(ifld)
       enddo
 
+      ! Update lglel, gllel, gllnid
+#if defined(DPROCMAP)
+      call dProcMapClearCache()
+#endif
+
+      do e=nelt0,1,-1
+        eg = lglel(e)
+        en = nblk*(e -1)
+        egn= nblk*(eg-1)
+
+        do el=1,ncut**ldim
+          en = en+1
+          egn= egn+1
+
+          lglel(en)  = egn
+#if defined(DPROCMAP)
+          ibuf(1) = en
+          ibuf(2) = nid
+          call dProcmapPut(ibuf,2,0,egn)
+#else
+          gllel(egn) = en
+          gllnid(eg) = nid
+#endif
+        enddo
+      enddo
+
+#if !defined(DPROCMAP)
+      npass = 1 + nelgt/lelt
+      k=1
+      do ipass = 1,npass
+         m = nelgt - k + 1
+         m = min(m,lelt)
+         if (m.gt.0) call igop(gllnid(k),iwork,'+  ',m)
+         if (m.gt.0) call igop(gllel(k) ,iwork,'+  ',m)
+         k = k+m
+      enddo
+#endif
+
       call nek_init_2  ! Reset some of the key arrays, etc.
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine h_refine_fld(u,nel,ncut)
+
+c     Interpolate field onto the refined mesh 1
+
+      include 'SIZE'
+
+      real u(lx1,ly1,lz1,lelt)
+      integer e,eg,egn,el,en,er,es,et
+
+      parameter(lxyz=lx1*ly1*lz1,mxnew=500)
+      common /qcrmg/ x0(lxyz,mxnew),y0(lxyz,mxnew),z0(lxyz,mxnew)
+     $             , pc(lx1*lx1,mxnew),pt(lx1*lx1,mxnew)
+      real pc,pt
+
+      nblk = ncut**ldim
+
+c     CHECK limit sizes
+c     TODO, bak u and zero u
+
+      call lim_chk(nblk,mxnew,'nblk ','mxnew',' h_refine_fld ')
+
+      nel_new = nblk*nel+1 ! +1 for temporary storage
+      call lim_chk(nel_new,lelt,'n_new','lelt ',' h_refine_fld ')
+
+      nelg_new = iglsum(nblk*nel,1)
+      call lim_chk(nelg_new,lelg,'ngnew','lelg ',' h_refine_fld ')
+
+      call set_interp_mat(ncut,pc,pt)
+
+      do e=nel,1,-1  ! REPLICATE EACH ELEMENT, working backward
+
+        call get_rst_m1_fld(x0,ncut,u(1,1,1,e),pc,pt)
+
+        en = nblk*(e - 1)
+
+        do el=1,ncut**ldim
+
+          en = en+1
+          call copy(u(1,1,1,en),x0(1,el),lxyz)
+
+        enddo
+
+      enddo
+
+      return
+      end
+c-----------------------------------------------------------------------
+c     Input: global element id from coarse mesh
+c     Output: id of the corresponding root-element in fine mesh
+      integer function ie_map_c2f(eg,nblk)
+      integer eg, nblk
+
+c     nblk = ncut**ldim
+      ie_map_c2f = (eg - 1) * nblk + 1
+      return
+      end
+c-----------------------------------------------------------------------
+c     In: global element id from fine mesh
+c     Output: id of the corresponding root-element in coarse mesh
+      integer function ie_map_f2c(egn,nblk)
+      integer egn, nblk
+
+      ie_map_f2c = (egn - 1) / nblk + 1
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine h_refine_copy(u,nel,ncut)
+      include 'SIZE'
+      real u(lx1,ly1,lz1,lelt)
+      real ubak(lx1,ly1,lz1,lelt)
+      integer ncut, nblk
+
+      integer icalld
+      save icalld
+      data icalld / 0 /
+
+      nblk = ncut**ldim
+      nxyz = lx1*ly1*lz1
+      call copy(ubak,u,nxyz*lelt)
+
+      do ie=1,nel
+        ien = ie_map_c2f(ie,nblk)
+        call copy(u(1,1,1,ie),ubak(1,1,1,ien),nxyz)
+      enddo
+
+      icalld = icalld + 1
 
       return
       end

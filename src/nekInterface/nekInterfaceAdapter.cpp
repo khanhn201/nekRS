@@ -45,7 +45,9 @@ static void (*nek_readfld_ptr)(double *,
                                double *,
                                double *,
                                double *,
-                               double *);
+                               double *,
+                               int *,
+                               int *);
 static void (*nek_uic_ptr)(int *);
 static void (*nek_end_ptr)(void);
 static void (*nek_restart_ptr)(char *, int *);
@@ -199,6 +201,22 @@ void readFld(fldData &data)
     s = platform->memoryPool.reserve<double>(nekFieldOffset * nsr);
   }
 
+  auto makeRefineSchedule = [&]() {
+    std::vector<std::string> list;
+    options->getArgs("MESH REFINEMENT SCHEDULE", list, ",");
+
+    std::vector<int> map;
+    for (auto &entry : list) {
+      int ncut=std::stoi(entry);
+      if (ncut > 0) {
+        map.push_back(ncut);
+      }
+    }
+    return map;
+  };
+  auto meshRefineSchedule = makeRefineSchedule();
+  int meshRefineScheduleSize = meshRefineSchedule.size();
+
   (*nek_readfld_ptr)(static_cast<double *>(xm.ptr()),
                      static_cast<double *>(ym.ptr()),
                      static_cast<double *>(zm.ptr()),
@@ -207,7 +225,9 @@ void readFld(fldData &data)
                      static_cast<double *>(vz.ptr()),
                      static_cast<double *>(pr.ptr()),
                      static_cast<double *>(t.ptr()),
-                     static_cast<double *>(s.ptr()));
+                     static_cast<double *>(s.ptr()),
+                     meshRefineSchedule.data(),
+                     &meshRefineScheduleSize);
 
   auto populate = [&](const std::vector<occa::memory> &fields, std::vector<occa::memory> &o_u) {
     auto o_tmpDouble = platform->device.malloc<double>(Nlocal);
@@ -614,7 +634,7 @@ void set_usr_handles(const char *session_in, int verbose)
   nek_openfld_ptr = (void (*)(char *, double *, double *, int))dlsym(handle, fname("nekf_openfld"));
   check_error(dlerror());
   nek_readfld_ptr =
-      (void (*)(double *, double *, double *, double *, double *, double *, double *, double *, double *))
+      (void (*)(double *, double *, double *, double *, double *, double *, double *, double *, double *, int *, int *))
           dlsym(handle, fname("nekf_readfld"));
   check_error(dlerror());
 
@@ -878,7 +898,7 @@ void buildNekInterface(int ldimt, int N, int np, setupAide &options)
         }
       }
       if (lelt > nelgt) {
-        lelt = nelgt;
+        lelt = nelgt + 3; // preserve 1 for refine
       }
 
       const std::string sizeFile = cache_dir + "/SIZE";

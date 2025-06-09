@@ -532,6 +532,8 @@ void nrsSetDefaultSettings(setupAide *options)
   options->setArgs("PRESSURE VISCOUS TERMS", "TRUE");
 
   options->setArgs("VARIABLE DT", "FALSE");
+
+  options->setArgs("LINEAR SOLVER STOPPING CRITERION TYPE", "LEGACY");
 }
 
 nrs_t::nrs_t()
@@ -1007,7 +1009,7 @@ void nrs_t::restartFromFile(const std::string &restartStr)
     const auto scalarStart = (o_iofldT.size()) ? 1 : 0;
     for (int i = scalarStart; i < Nscalar; i++) {
       const auto sid = scalarDigitStr(i - scalarStart);
-      if (checkOption("s" + sid) && isAvailable("scalar" + sid)) {
+      if (checkOption("s") && isAvailable("scalar" + sid)) {
         auto o_Si = cds->o_S.slice(cds->fieldOffsetScan[i], mesh->Nlocal);
         std::vector<occa::memory> o_iofldSi = {o_Si};
         iofld->addVariable("scalar" + sid, o_iofldSi);
@@ -1025,13 +1027,43 @@ void nrs_t::restartFromFile(const std::string &restartStr)
   platform->options.setArgs("START TIME", (requestedTime.size()) ? requestedTime : to_string_f(time));
 }
 
+void nrs_t::restartFromFiles(const std::string &restartStr)
+{
+  // split string with comma
+  std::vector<std::string> list = serializeString(restartStr, ',');
+
+  for (std::string fileStr : list) {
+    if (!fileStr.empty()) {
+      if (platform->comm.mpiRank == 0 && platform->verbose) {
+        printf("restart string: |%s|\n", fileStr.c_str());
+        fflush(stdout);
+      }
+      restartFromFile(fileStr);
+    }
+  }
+}
+
 void nrs_t::setIC()
 {
   getICFromNek();
 
   if (!platform->options.getArgs("RESTART FILE NAME").empty()) {
-    restartFromFile(platform->options.getArgs("RESTART FILE NAME"));
+    // split string with comma
+    std::string fileList;
+    platform->options.getArgs("RESTART FILE NAME", fileList);
+    if (platform->comm.mpiRank == 0 && platform->verbose) {
+      printf("Initial restart string: |%s|\n", fileList.c_str());
+      fflush(stdout);
+    }
+    restartFromFiles(fileList);
   }
+
+  double startTime;
+  const bool updateMesh = true;
+  platform->options.getArgs("START TIME", startTime);
+  copyToNek(startTime, 0, updateMesh); // copy all, including mesh
+  nek::userchk(); // always call userchk
+  copyFromNek(updateMesh); // recompute geometry
 
   if (platform->comm.mpiRank == 0) {
     std::cout << "calling UDF_Setup ... \n" << std::flush;
@@ -1068,8 +1100,6 @@ void nrs_t::setIC()
     }
   }
 
-  double startTime;
-  platform->options.getArgs("START TIME", startTime);
   copyToNek(startTime, 0, true); // ensure both codes are in sync
 
   nekrsCheck(platform->options.compareArgs("LOWMACH", "TRUE") && p0th[0] <= 1e-6,
@@ -1753,21 +1783,35 @@ void nrs_t::copyToNek(double time, bool updateMesh_)
   }
 }
 
-void nrs_t::copyFromNek()
+void nrs_t::copyFromNek(bool updateMesh)
 {
   double time; // dummy
-  copyFromNek(time);
+  copyFromNek(time, updateMesh);
 }
 
-void nrs_t::copyFromNek(double &time)
+void nrs_t::copyFromNek(double &time, bool updateMesh)
 {
   if (platform->comm.mpiRank == 0) {
-    printf("copying solution from nek\n");
+    printf("copying solution from nek %s\n",
+           (updateMesh) ? "(updateMesh=T)" : "");
     fflush(stdout);
   }
 
   time = *(nekData.time);
   p0th[0] = *(nekData.p0th);
+
+  if (updateMesh) { // call mesh->update() afterwards for geom_reset
+    auto mesh = (cht) ? cds->mesh[0] : this->mesh;
+    auto [x, y, z] = mesh->xyzHost();
+    for (int i = 0; i < mesh->Nlocal; i++) {
+        x[i] = nekData.xm1[i];
+        y[i] = nekData.ym1[i];
+        z[i] = nekData.zm1[i];
+    }
+    mesh->o_x.copyFrom(x.data(), mesh->Nlocal);
+    mesh->o_y.copyFrom(y.data(), mesh->Nlocal);
+    mesh->o_z.copyFrom(z.data(), mesh->Nlocal);
+  }
 
   {
     auto U = platform->memoryPool.reserve<dfloat>(mesh->dim * fieldOffset);

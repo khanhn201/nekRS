@@ -123,8 +123,10 @@ void ciSetup(MPI_Comm comm, setupAide &options)
   options.setArgs("END TIME", std::string("0.06"));
   options.setArgs("DT", std::string("2e-3"));
   options.setArgs("SUBCYCLING STEPS", std::string("0"));
+  options.setArgs("LINEAR SOLVER STOPPING CRITERION TYPE", "L2_RESIDUAL");
   options.setArgs("PRESSURE INITIAL GUESS", "PREVIOUS");
 
+  options.setArgs("VELOCITY SOLVER", "PCG+COMBINED");
   options.setArgs("VELOCITY BLOCK SOLVER", "FALSE");
 
   options.setArgs("SCALAR INITIAL GUESS", "PREVIOUS");
@@ -336,7 +338,9 @@ void ciSetup(MPI_Comm comm, setupAide &options)
   // refine + checkpoint
   if (ciMode == 25) {
     //options.setArgs("MESH REFINEMENT SCHEDULE", "2,2"); // TODO
-    options.setArgs("MESH REFINEMENT SCHEDULE", "4");
+//    options.setArgs("MESH REFINEMENT SCHEDULE", "4");
+//    options.setArgs("POLYNOMIAL DEGREE", std::string("10")); //TODO
+    options.setArgs("MESH REFINEMENT SCHEDULE", "2");
     options.setArgs("NUMBER TIMESTEPS", std::string("0"));
     options.setArgs("END TIME", std::string("0"));
     options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
@@ -767,13 +771,13 @@ void ciCheckpointing(nrs_t *nrs)
       nrs->writeCheckpoint(time, 0);
     }
 
-    // wipe out solutions
+    // wipe out solutions after write
     platform->linAlg->fill(nrs->NVfields * nrs->fieldOffset, 0.0, nrs->o_U);
     if (nrs->Nscalar > 0) {
       platform->linAlg->fill(nrs->cds->fieldOffsetSum, 0.0, nrs->cds->o_S);
     }
 
-    nrs->restartFromFile(restartFile); 
+    nrs->restartFromFiles(restartFile);
  
     double startTime;
     platform->options.getArgs("START TIME", startTime);
@@ -808,25 +812,27 @@ void ciCheckpointing(nrs_t *nrs)
 
   if (ciMode==23) {
     run("NEK", "ethier0.f00000");
-
-/*  
-    run("NEK", "ethier0.f00000");
     run("NEK", "ethier0.f00001+U+P+T+S");
 
     destroyMesh(); // force loading mesh from restart
     run("NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
-*/  
 
     run("ADIOS", "ethier.bp");
     run("ADIOS", "ethier.bp+int", true);
   }
+
   if (ciMode==25) {
     platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0"); // TODO
     run("NEK", "ethierRefine0.f00000");
     //platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0");
     //run("NEK", "ref22.fld",true);
-    platform->options.setArgs("MESH REFINEMENT SCHEDULE", "4");
-    run("NEK", "ref0.fld",true);
+    platform->options.setArgs("MESH REFINEMENT SCHEDULE", "2");
+    run("NEK", "ref0.fld+U+P+S",true);
+    destroyMesh(); // force loading mesh from restart
+    run("NEK", "ref0.fld",true); // TODO multi file
+
+    platform->options.setArgs("MESH REFINEMENT SCHEDULE", "0"); // TODO
+    run("NEK", "ethierRefine0.f00001");
   }
 }
 

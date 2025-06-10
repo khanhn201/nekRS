@@ -83,11 +83,19 @@ jobs:
 
     - name: 'ethier build-only'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R ethier-buildOnly 
+      run: ctest --output-on-failure -R "^ethier-buildOnly$"
 
     - name: 'ethier'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R ethier 
+      run: ctest --output-on-failure -R "^ethier$"
+
+    - name: 'ethierRefine build-only'
+      working-directory: ${{ env.NEKRS_EXAMPLES }}/build
+      run: ctest --output-on-failure -R ethierRefine-buildOnly
+
+    - name: 'ethierRefine'
+      working-directory: ${{ env.NEKRS_EXAMPLES }}/build
+      run: ctest --output-on-failure -R ethierRefine
 
   lowMach:
     needs: install

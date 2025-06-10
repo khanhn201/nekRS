@@ -1323,16 +1323,12 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine nekf_readfld(xm1_,ym1_,zm1_,vx_,vy_,vz_,pm1_,t_,ps_
-     $                       ,refine, refineSize);
+      subroutine nekf_readfld(xm1_,ym1_,zm1_,vx_,vy_,vz_,pm1_,t_,ps_)
 
       include 'mpif.h'
       include 'SIZE'
       include 'TOTAL'
       include 'RESTART'
-
-      integer refineSize
-      integer refine(refineSize)
 
       real xm1_(lx1,ly1,lz1,*), ym1_(lx1,ly1,lz1,*), zm1_(lx1,ly1,lz1,*)
       real vx_ (lx1,ly1,lz1,*), vy_ (lx1,ly1,lz1,*), vz_ (lx1,ly1,lz1,*)
@@ -1352,20 +1348,6 @@ c-----------------------------------------------------------------------
 
       integer   disp_unit
       integer*8 win_size
-
-      logical ifremap
-
-      if (np.gt.1) then
-      do iref=1,refineSize
-        ncut = refine(iref)
-        nblk = ncut**ldim
-        do i=1,nelr                       ! go through elem in file
-          iegr = er(i)                    ! global id of thie elem
-          iegnr = ie_map_c2f(iegr,nblk)   ! map to the global id of the refined elem
-          er(i) = iegnr                   ! put it back to the list
-        enddo
-      enddo
-      endif
 
 #ifdef MPI
       if (ifcrrs) then
@@ -1439,72 +1421,6 @@ c-----------------------------------------------------------------------
         if(nid.eq.pid0r) call byte_close(ierr)
       endif
       call err_chk(ierr,'Error closing restart file, in mfi.$')
-
-      ncut_total = 1
-      do iref=1,refineSize
-        ncut_total = ncut_total * refine(iref)
-      enddo
-      nblk_total = ncut_total**ldim
-
-      ! TODO check devisible and such
-      if (np.gt.1) then
-        nelt0 = nelt
-        do iref=refineSize,1,-1 ! reverse copy
-          ncut = refine(iref)
-          nblk = ncut**ldim
-          nelt0 = nelt0 / nblk
-
-          if (ifgetxr) then
-            call h_refine_copy(xm1_,nelt0,ncut)
-            call h_refine_copy(ym1_,nelt0,ncut)
-            call h_refine_copy(zm1_,nelt0,ncut)
-          endif
-          if (ifgetur) then
-            call h_refine_copy(vx_,nelt0,ncut)
-            call h_refine_copy(vy_,nelt0,ncut)
-            call h_refine_copy(vz_,nelt0,ncut)
-          endif
-          if (ifgetpr) then
-            call h_refine_copy(pm1_,nelt0,ncut)
-          endif
-          if (ifgettr) then
-            call h_refine_copy(t_,nelt0,ncut)
-          endif
-          do k=1,npsr
-            call h_refine_copy(ps_(1,1,1,1,k),nelt0,ncut)
-          enddo
-        enddo
-      endif
-      ! TODO check nelt0 * nelt / nblk_total
-
-      nelt0 = nelt / nblk_total
-      do iref=1,refineSize
-        ! TODO, copy data to avoid gap
-        ! TODO: print
-        ncut = refine(iref)
-        nblk = ncut**ldim
-        if (ifgetxr) then
-          call h_refine_fld(xm1_,nelt0,ncut)
-          call h_refine_fld(ym1_,nelt0,ncut)
-          call h_refine_fld(zm1_,nelt0,ncut)
-        endif
-        if (ifgetur) then
-          call h_refine_fld(vx_,nelt0,ncut)
-          call h_refine_fld(vy_,nelt0,ncut)
-          call h_refine_fld(vz_,nelt0,ncut)
-        endif
-        if (ifgetpr) then
-          call h_refine_fld(pm1_,nelt0,ncut)
-        endif
-        if (ifgettr) then
-          call h_refine_fld(t_,nelt0,ncut)
-        endif
-        do k=1,npsr
-          call h_refine_fld(ps_(1,1,1,1,k),nelt0,ncut)
-        enddo
-        nelt0 = nelt0 * nblk
-      enddo
-      ! TODO check nelt0 = nelt
 
 #ifdef MPI
       if (ifcrrs) then

@@ -45,9 +45,20 @@ static void (*nek_readfld_ptr)(double *,
                                double *,
                                double *,
                                double *,
-                               double *,
-                               int *,
-                               int *);
+                               double *);
+static void (*nek_refine_map_elements_ptr)(int *,
+                                           int *);
+static void (*nek_refine_readfld_ptr)(double *,
+                                      double *,
+                                      double *,
+                                      double *,
+                                      double *,
+                                      double *,
+                                      double *,
+                                      double *,
+                                      double *,
+                                      int *,
+                                      int *);
 static void (*nek_uic_ptr)(int *);
 static void (*nek_end_ptr)(void);
 static void (*nek_restart_ptr)(char *, int *);
@@ -167,7 +178,7 @@ fldData openFld(const std::string &filename, std::vector<std::string> &_availabl
   return data;
 }
 
-void readFld(fldData &data)
+void readFld(fldData &data, std::vector<int> refineSchedule)
 {
   const auto nxyz = nekData.nx1 * nekData.nx1 * nekData.nx1;
   const auto Nlocal = nekData.nelt * nxyz;
@@ -203,21 +214,38 @@ void readFld(fldData &data)
     s = platform->memoryPool.reserve<double>(nekFieldOffset * nsr);
   }
 
-  auto makeRefineSchedule = [&]() {
-    std::vector<std::string> list;
-    options->getArgs("MESH REFINEMENT SCHEDULE", list, ",");
-
-    std::vector<int> map;
-    for (auto &entry : list) {
-      int ncut=std::stoi(entry);
-      if (ncut > 0) {
-        map.push_back(ncut);
-      }
+  int ierr = 0;
+  int refineScheduleSize = refineSchedule.size();
+  int nelLeft = nekData.nelt;
+  if (refineScheduleSize > 0) {
+    if (rank == 0) {
+      printf("readFld: refine fields ...");
     }
-    return map;
-  };
-  auto meshRefineSchedule = makeRefineSchedule();
-  int meshRefineScheduleSize = meshRefineSchedule.size();
+    for (int i = 0; i < refineScheduleSize; i++) {
+      const int ncut = refineSchedule[i];
+      const int nblk = ncut * ncut * ncut; // 3d
+      if (rank == 0) {
+        printf(" %d", ncut);
+      }
+      if (nelLeft % nblk != 0) {
+        ierr = 1;
+      }
+      nelLeft /= nblk;
+    }
+    if (rank == 0) {
+      printf("\n");
+    }
+  }
+
+  nekrsCheck(ierr,
+             platform->comm.mpiComm,
+             EXIT_FAILURE,
+             "%s\n",
+             "readFld: nel is not divisible by refine schedule");
+
+  if (refineScheduleSize > 0) {
+    (*nek_refine_map_elements_ptr)(refineSchedule.data(), &refineScheduleSize);
+  }
 
   (*nek_readfld_ptr)(static_cast<double *>(xm.ptr()),
                      static_cast<double *>(ym.ptr()),
@@ -227,9 +255,21 @@ void readFld(fldData &data)
                      static_cast<double *>(vz.ptr()),
                      static_cast<double *>(pr.ptr()),
                      static_cast<double *>(t.ptr()),
-                     static_cast<double *>(s.ptr()),
-                     meshRefineSchedule.data(),
-                     &meshRefineScheduleSize);
+                     static_cast<double *>(s.ptr()));
+
+  if (refineScheduleSize > 0) {
+    (*nek_refine_readfld_ptr)(static_cast<double *>(xm.ptr()),
+                              static_cast<double *>(ym.ptr()),
+                              static_cast<double *>(zm.ptr()),
+                              static_cast<double *>(vx.ptr()),
+                              static_cast<double *>(vy.ptr()),
+                              static_cast<double *>(vz.ptr()),
+                              static_cast<double *>(pr.ptr()),
+                              static_cast<double *>(t.ptr()),
+                              static_cast<double *>(s.ptr()),
+                              refineSchedule.data(),
+                              &refineScheduleSize);
+  }
 
   auto populate = [&](const std::vector<occa::memory> &fields, std::vector<occa::memory> &o_u) {
     auto o_tmpDouble = platform->device.malloc<double>(Nlocal);
@@ -636,8 +676,15 @@ void set_usr_handles(const char *session_in, int verbose)
   nek_openfld_ptr = (void (*)(char *, double *, double *, int *, int))dlsym(handle, fname("nekf_openfld"));
   check_error(dlerror());
   nek_readfld_ptr =
-      (void (*)(double *, double *, double *, double *, double *, double *, double *, double *, double *, int *, int *))
+      (void (*)(double *, double *, double *, double *, double *, double *, double *, double *, double *))
           dlsym(handle, fname("nekf_readfld"));
+  check_error(dlerror());
+
+  nek_refine_map_elements_ptr = (void (*)(int *, int *))dlsym(handle, fname("nekf_refine_map_elements"));
+  check_error(dlerror());
+  nek_refine_readfld_ptr =
+      (void (*)(double *, double *, double *, double *, double *, double *, double *, double *, double *, int *, int *))
+          dlsym(handle, fname("nekf_refine_readfld"));
   check_error(dlerror());
 
   nek_restart_ptr = (void (*)(char *, int *))dlsym(handle, fname("nekf_restart"));
@@ -889,6 +936,7 @@ void buildNekInterface(int ldimt, int N, int np, setupAide &options)
       const std::string meshFile = options.getArgs("MESH FILE");
 
       re2::nelg(meshFile, nelgt, nelgv, MPI_COMM_SELF);
+
       int lelt = (nelgt / np) + 3;
       {
         int nscale = 1;
@@ -899,8 +947,23 @@ void buildNekInterface(int ldimt, int N, int np, setupAide &options)
           lelt *= nscale;
         }
       }
+
+      int lelg = -1;
+      platform->options.getArgs("MAX NUMBER OF ELEMENTS", lelg);
+      if (lelg > 0) {
+        if (lelg < nelgt) {
+          if (rank == 0) {
+            printf("user provided lelg=%d is too small, use nelgt from re2\n", lelg);
+          }
+          fflush(stdout);
+        } else {
+          nelgt = lelg;
+          lelt = (nelgt / np) + 3;
+        }
+      }
+
       if (lelt > nelgt) {
-        lelt = nelgt + 3; // preserve 1 for refine
+        lelt = nelgt + 1; // at least preserve 1 extra for refine
       }
 
       const std::string sizeFile = cache_dir + "/SIZE";

@@ -75,7 +75,10 @@ c-----------------------------------------------------------------------
 
       save ncut_save
       data ncut_save /0/
-      ! TODO: assert ncut > 1
+
+      if (ncut.le.1)
+     $  call exitti('invalid ncut in set_interp_mat$',set_interp_mat)
+
       if (ncut.ne.ncut_save) then
 
         dr = 2./ncut
@@ -455,7 +458,6 @@ c     Interpolate field onto the refined mesh 1
       nblk = ncut**ldim
 
 c     CHECK limit sizes
-c     TODO, bak u and zero u
 
       call lim_chk(nblk,mxnew,'nblk ','mxnew',' h_refine_fld ')
 
@@ -524,6 +526,132 @@ c-----------------------------------------------------------------------
       enddo
 
       icalld = icalld + 1
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine nekf_refine_map_elements(refine, refineSize)
+      include 'SIZE'
+      include 'TOTAL'
+      include 'RESTART'
+      integer refineSize
+      integer refine(refineSize)
+
+      ! check number of elements
+      ncut_total = 1
+      do iref=1,refineSize
+        ncut_total = ncut_total * refine(iref)
+      enddo
+      nblk_total = ncut_total**ldim
+
+      ierr = 0
+      if (nid.eq.0) then
+        if (nelgr*nblk_total.ne.nelgt) ierr = 1
+      endif
+      ierr = iglsum(ierr,1)
+      if (ierr.ne.0)
+     $  call exitti('nekf_refine_map nel mismstched$',nelgr)
+
+      if (np.gt.1) then
+      do iref=1,refineSize
+        ncut = refine(iref)
+        nblk = ncut**ldim
+        do i=1,nelr                       ! go through elem in file
+          iegr = er(i)                    ! global id of thie elem
+          iegnr = ie_map_c2f(iegr,nblk)   ! map to the global id of the refined elem
+          er(i) = iegnr                   ! put it back to the list
+        enddo
+      enddo
+      endif
+
+      return
+      end
+c-----------------------------------------------------------------------
+      subroutine nekf_refine_readfld(xm1_,ym1_,zm1_,vx_,vy_,vz_
+     $                              ,pm1_,t_,ps_, refine, refineSize)
+c      implicit none
+      include 'SIZE'
+      include 'TOTAL'
+      include 'RESTART'
+
+      real xm1_(lx1,ly1,lz1,*), ym1_(lx1,ly1,lz1,*), zm1_(lx1,ly1,lz1,*)
+      real vx_ (lx1,ly1,lz1,*), vy_ (lx1,ly1,lz1,*), vz_ (lx1,ly1,lz1,*)
+      real pm1_(lx1,ly1,lz1,*)
+      real t_  (lx1,ly1,lz1,*)
+      real ps_ (lx1,ly1,lz1,lelt,*)
+
+      integer refineSize
+      integer refine(refineSize)
+
+      ncut_total = 1
+      do iref=1,refineSize
+        ncut_total = ncut_total * refine(iref)
+      enddo
+      nblk_total = ncut_total**ldim
+
+      ierr = 0
+      if (nelr*nblk_total.ne.nelt) ierr = 1
+      ierr = iglsum(ierr,1)
+      if (ierr.ne.0) then
+        if (nio.eq.0) write(*,12) nid,nelr,nelt,nblk_total
+        call exitt
+      endif
+ 12   format(1X,'nekf_refine_readfld nel mismstched',3I12)
+
+      if (np.gt.1) then
+        nelt0 = nelt
+        do iref=refineSize,1,-1 ! reverse copy
+          ncut = refine(iref)
+          nblk = ncut**ldim
+          nelt0 = nelt0 / nblk
+
+          if (ifgetxr) then
+            call h_refine_copy(xm1_,nelt0,ncut)
+            call h_refine_copy(ym1_,nelt0,ncut)
+            call h_refine_copy(zm1_,nelt0,ncut)
+          endif
+          if (ifgetur) then
+            call h_refine_copy(vx_,nelt0,ncut)
+            call h_refine_copy(vy_,nelt0,ncut)
+            call h_refine_copy(vz_,nelt0,ncut)
+          endif
+          if (ifgetpr) then
+            call h_refine_copy(pm1_,nelt0,ncut)
+          endif
+          if (ifgettr) then
+            call h_refine_copy(t_,nelt0,ncut)
+          endif
+          do k=1,npsr
+            call h_refine_copy(ps_(1,1,1,1,k),nelt0,ncut)
+          enddo
+        enddo
+      endif
+
+      nelt0 = nelt / nblk_total
+      do iref=1,refineSize
+        ncut = refine(iref)
+        nblk = ncut**ldim
+        if (ifgetxr) then
+          call h_refine_fld(xm1_,nelt0,ncut)
+          call h_refine_fld(ym1_,nelt0,ncut)
+          call h_refine_fld(zm1_,nelt0,ncut)
+        endif
+        if (ifgetur) then
+          call h_refine_fld(vx_,nelt0,ncut)
+          call h_refine_fld(vy_,nelt0,ncut)
+          call h_refine_fld(vz_,nelt0,ncut)
+        endif
+        if (ifgetpr) then
+          call h_refine_fld(pm1_,nelt0,ncut)
+        endif
+        if (ifgettr) then
+          call h_refine_fld(t_,nelt0,ncut)
+        endif
+        do k=1,npsr
+          call h_refine_fld(ps_(1,1,1,1,k),nelt0,ncut)
+        enddo
+        nelt0 = nelt0 * nblk
+      enddo
 
       return
       end

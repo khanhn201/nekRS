@@ -1385,6 +1385,7 @@ c-----------------------------------------------------------------------
      $                        commrs,rsH,ierr)
 
           if (ierr .ne. 0 ) call exitti('MPI_Win_allocate failed!$',0)
+          call rzero(wk,lwk) ! avoid un-initialized values, FE_INVALID, in h_refine
         endif
       endif
 #endif

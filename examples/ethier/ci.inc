@@ -896,16 +896,21 @@ void ciCheckpointing(nrs_t *nrs)
 
   if (ciMode==27) { // refine = 2,2
     run("1", "NEK", "ethierRefine0.f00000");
-    run("2", "NEK", "ci23.fld+U+P+S+refine=2;2",true);
+    run("2", "NEK", "ci26.fld+U+P+S+refine=2",true);
+    run("3", "NEK", "ci23.fld+U+P+S+refine=2;2",true);
     breakMesh();
-    run("3", "NEK", "ethierRefine0.f00000+X,ci23.fld+U+refine=2;2,ci26.fld+P+S+refine=2",true);
-    run("4", "NEK", "ethierRefine0.f00001");
-    run("5", "ADIOS", "ethierRefine.bp");
+    run("4", "NEK", "ethierRefine0.f00000+X,ci23.fld+U+refine=2;2,ci26.fld+P+S+refine=2",true);
+    run("5", "NEK", "ethierRefine0.f00001");
+    run("6", "ADIOS", "ethierRefine.bp");
   }
 }
 
 void ciTestDistance(nrs_t *nrs)
 {
+  if (std::fetestexcept(FE_INVALID)) {
+    throw std::runtime_error("floating-point exception occured!");
+  }
+
   auto mesh = nrs->mesh;
 
   int nbID = 1;

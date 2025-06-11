@@ -1267,7 +1267,7 @@ void parseLinearSolver(const int rank, setupAide &options, inipp::Ini *ini, std:
   if (applyDefault) {
     options.setArgs(parSectionName + "SOLVER", "PCG");
     if (options.compareArgs(parSectionName + "PRECONDITIONER", "JACOBI")) {
-#if 1
+#if 0
       options.setArgs(parSectionName + "SOLVER", "PCG+COMBINED");
 #else
       options.setArgs(parSectionName + "SOLVER", "PCG");

@@ -392,6 +392,11 @@ void ciSetup(MPI_Comm comm, setupAide &options)
                fname.c_str(),
                ciMode);
   }
+  if (ciMode == 28) { // XXT
+    options.setArgs("PRESSURE INITIAL GUESS", "PROJECTION-ACONJ");
+    options.setArgs("VELOCITY INITIAL GUESS", "PROJECTION-ACONJ");
+    options.setArgs("PRESSURE COARSE SOLVER", "XXT");
+  }
 }
 
 auto generatePoints(int nPoints, double R)
@@ -1145,6 +1150,9 @@ void ciTestErrors(nrs_t *nrs,
     if (ciMode == 22) {
       expectedNiterP = 3;
     }
+    if (ciMode == 28) { // XXT
+      expectedNiterP = 7;
+    }
 
     if (nrs->timeStepConverged) {
       const int pIterTest = abs(NiterP - expectedNiterP);
@@ -1524,6 +1532,16 @@ void ciTestErrors(nrs_t *nrs,
     pIterTest = NiterP < 10;
     vxTest = err[0] < 2.77E-10;
     prTest = err[1] < 7.14E-10;
+    break;
+  }
+  case 28: // XXT
+  {
+    velIterTest = abs(NiterU - 10) < 2;
+    s1Test = abs((err[2] - 5.25E-12) / err[2]) < EPS;
+    s2Test = abs((err[3] - 6.09E-12) / err[3]) < EPS;
+    pIterTest = abs(NiterP - 4) < 2;
+    vxTest = abs((err[0] - 2.78E-10) / err[0]) < EPS;
+    prTest = abs((err[1] - 7.11E-10) / err[1]) < EPS;
     break;
   }
  

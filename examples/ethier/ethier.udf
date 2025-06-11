@@ -489,7 +489,7 @@ void UDF_ExecuteStep(double time, int tstep)
     }
   }
 
-  if (ciMode == 23 || ciMode == 25) {
+  if (ciMode == 23 || ciMode == 26 || ciMode == 27) {
     ciCheckpointing(nrs);
   }
 

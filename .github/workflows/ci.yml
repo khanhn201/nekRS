@@ -83,19 +83,19 @@ jobs:
 
     - name: 'ethier build-only'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R "^ethier-buildOnly$"
+      run: ctest --output-on-failure -R "^ethier-buildOnly_*[0-9]$"
 
     - name: 'ethier'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R "^ethier$"
+      run: ctest --output-on-failure -R "^ethier_*[0-9]$"
 
     - name: 'ethierRefine build-only'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R ethierRefine-buildOnly
+      run: ctest --output-on-failure -R "^ethierRefine-buildOnly_*[0-9]$"
 
     - name: 'ethierRefine'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R ethierRefine
+      run: ctest --output-on-failure -R "^ethierRefine_*[0-9]$"
 
   lowMach:
     needs: install
@@ -149,7 +149,7 @@ jobs:
 
     - name: 'mv_cyl'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build
-      run: ctest --output-on-failure -R "^mv_cyl$"
+      run: ctest --output-on-failure -R "^mv_cyl_*[0-9]$"
 
     - name: 'mv_cyl_derived_bc'
       working-directory: ${{ env.NEKRS_EXAMPLES }}/build

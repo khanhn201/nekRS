@@ -239,10 +239,7 @@ void ellipticMultiGridSetup(elliptic_t *elliptic_)
       }
     } else {
 
-      hlong *coarseGlobalStarts = (hlong *)calloc(platform->comm.mpiCommSize + 1, sizeof(hlong));
-
-      int jl = options.compareArgs("COARSE SOLVER", "XXT");
-      if (jl) {
+      if (options.compareArgs("COARSE SOLVER", "XXT")) {
         uint num_total, nnz;
         uint *ia, *ja;
         ulong *gids;
@@ -252,13 +249,15 @@ void ellipticMultiGridSetup(elliptic_t *elliptic_)
         jl_setup(platform->comm.mpiComm, num_total, gids, nnz, ia, ja, a, elliptic->nullspace, 1);
 
         int rank = platform->comm.mpiRank;
+        hlong *coarseGlobalStarts = (hlong *)calloc(platform->comm.mpiCommSize + 1, sizeof(hlong));
         coarseGlobalStarts[rank] = 0;
         coarseGlobalStarts[rank + 1] = num_total;
 
         precon->MGSolver->coarseLevel->setupSolver(coarseGlobalStarts, 0, 0, 0, 0, elliptic->nullspace);
 
-        free(gids), free(ia), free(ja), free(a);
+        free(coarseGlobalStarts), free(gids), free(ia), free(ja), free(a);
       } else {
+        hlong *coarseGlobalStarts = (hlong *)calloc(platform->comm.mpiCommSize + 1, sizeof(hlong));
         nonZero_t *coarseA;
         dlong nnzCoarseA;
 

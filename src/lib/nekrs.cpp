@@ -212,6 +212,14 @@ void setup(MPI_Comm commg_in,
   {
     int nelgt, nelgv;
     re2::nelg(platform->options.getArgs("MESH FILE"), nelgt, nelgv, comm);
+    {
+      int nscale = 1;
+      options->getArgs("MESH REFINEMENT SCALE", nscale);
+      if (nscale > 1) {
+        nelgt *= nscale;
+        nelgv *= nscale;
+      }
+    }
     nekrsCheck(size > nelgv, platform->comm.mpiComm, EXIT_FAILURE, "%s\n", "MPI tasks > number of elements!");
   }
 

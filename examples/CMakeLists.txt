@@ -111,6 +111,9 @@ add("ethier" 2 "mv_ethier.par" "5;6" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")
 add("ethier" 2 "ethierScalar.par" "13" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")
 add("ethier" 2 "ethier.par" "22" ON "${dir}" "${BUILD_ONLY}")
 
+add("ethierRefine-buildOnly" 2 "ethierRefine.par" "24" "${USE_FP32}" "${EXAMPLES_DIR}/ethier" ON)
+add("ethierRefine" 2 "ethierRefine.par" "24;25;26;27" "${USE_FP32}" "${EXAMPLES_DIR}/ethier" "${BUILD_ONLY}")
+
 add("lowMach" 2 "lowMach.par" "1" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")
 
 add("mv_cyl" 2 "mv_cyl.par" "1;2;3;5;6" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")

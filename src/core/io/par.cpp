@@ -136,6 +136,8 @@ static std::vector<std::string> generalKeys = {
     {"checkpointControl"},
     {"writeInterval"},
     {"checkpointInterval"},
+    {"checkpointRefineRead"},
+//  {"checkpointRefineWrite"}, // future work
     {"constFlowRate"},
     {"verbose"},
     {"variableDT"},
@@ -190,6 +192,8 @@ static std::vector<std::string> meshKeys = {
     {"connectivitytol"},
     {"boundaryidmapV"},
     {"boundaryidmap"},
+    {"maxElements"},
+    {"refine"},
 };
 
 static std::vector<std::string> velocityKeys = {
@@ -2074,6 +2078,12 @@ void parseGeneralSection(const int rank, setupAide &options, inipp::Ini *ini)
     }
   }
 
+  std::string checkpointRefineRead;
+  options.setArgs("CHECKPOINT REFINE READ SCHEDULE", "0");
+  if (!ini->extract("general", "checkpointrefineread", checkpointRefineRead)) {
+    options.setArgs("CHECKPOINT REFINE READ SCHEDULE", checkpointRefineRead);
+  }
+
   bool dealiasing = true;
   if (ini->extract("general", "dealiasing", dealiasing)) {
     if (dealiasing) {
@@ -2101,6 +2111,27 @@ void parseMeshSection(const int rank, setupAide &options, inipp::Ini *ini)
     std::string meshFile;
     if (ini->extract("mesh", "file", meshFile)) {
       options.setArgs("MESH FILE", meshFile);
+    }
+
+    int maxElements;
+    if (ini->extract("mesh", "maxelements", maxElements)) {
+      options.setArgs("MAX NUMBER OF ELEMENTS", std::to_string(maxElements));
+    }
+
+    std::string p_refineSchedule;
+    if (ini->extract("mesh", "refine", p_refineSchedule)) {
+      options.setArgs("MESH REFINEMENT SCHEDULE", p_refineSchedule);
+
+      int ncut = 1;
+      for (auto &&s : serializeString(p_refineSchedule, ',')) {
+        ncut *= std::stoi(s);
+      }
+      if (ncut > 1) {
+        int ndim = 3;
+        int scale = static_cast<int>(std::pow(ncut, ndim));
+        options.setArgs("MESH REFINEMENT NCUT", std::to_string(ncut));
+        options.setArgs("MESH REFINEMENT SCALE", std::to_string(scale));
+      }
     }
 
     parseLinearSolver(rank, options, ini, "mesh");

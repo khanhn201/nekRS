@@ -566,6 +566,14 @@ void nrs_t::init()
     int nelgt, nelgv;
     const std::string meshFile = platform->options.getArgs("MESH FILE");
     re2::nelg(meshFile, nelgt, nelgv, platform->comm.mpiComm);
+    {
+      int nscale = 1;
+      platform->options.getArgs("MESH REFINEMENT SCALE", nscale);
+      if (nscale > 1) {
+        nelgt *= nscale;
+        nelgv *= nscale;
+      }
+    }
 
     nekrsCheck(nelgt != nelgv && platform->options.compareArgs("MOVING MESH", "TRUE"),
                platform->comm.mpiComm,
@@ -911,6 +919,19 @@ void nrs_t::restartFromFile(const std::string &restartStr)
     return found;
   }();
 
+  auto hRefine = [&]() {
+    auto it = std::find_if(options.begin(), options.end(), [](const std::string &s) {
+      return s.find("refine") != std::string::npos;
+    });
+
+    std::string val;
+    if (it != options.end()) {
+      val = serializeString(*it, '=').at(1);
+      options.erase(it);
+    }
+    return val;
+  }();
+
   const auto requestedFields = [&]() {
     std::vector<std::string> flds;
     for (const auto &entry : {"x", "u", "p", "t", "s"}) {
@@ -1011,6 +1032,11 @@ void nrs_t::restartFromFile(const std::string &restartStr)
 
   if (pointInterpolation) {
     iofld->readAttribute("interpolate", "true");
+  }
+
+  if (hRefine.size()) {
+    std::replace(hRefine.begin(), hRefine.end(), ';', ',');
+    iofld->readAttribute("refine", hRefine);
   }
 
   iofld->process();

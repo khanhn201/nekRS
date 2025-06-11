@@ -322,6 +322,76 @@ void ciSetup(MPI_Comm comm, setupAide &options)
     options.setArgs("END TIME", std::string("0"));
     options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
   }
+
+  if (ciMode == 24 || ciMode == 25 || ciMode == 26 || ciMode == 27) {
+    std::string casename = platform->options.getArgs("CASENAME");
+    nekrsCheck(casename != "ethierRefine",
+               platform->comm.mpiComm,
+               EXIT_FAILURE,
+               "Unexpected input file for CI mode %d\n",
+               ciMode);
+  }
+
+  // refine = 2
+  if (ciMode == 24) {
+    options.setArgs("MESH REFINEMENT SCHEDULE", "2");
+    options.setArgs("MESH REFINEMENT NCUT", "2");
+    options.setArgs("MESH REFINEMENT SCALE", "8"); // 8x mesh size
+    options.setArgs("DT", std::string("1e-3"));
+    options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
+  }
+
+  // refine = 2,2
+  if (ciMode == 25) {
+    options.setArgs("MESH REFINEMENT SCHEDULE", "2,2");
+    options.setArgs("MESH REFINEMENT NCUT", "4"); // = 2 x 2
+    options.setArgs("MESH REFINEMENT SCALE", "64"); // 64x mesh size
+    options.setArgs("DT", std::string("5e-4"));
+    options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
+  }
+
+  // refine = 2 + checkpoint
+  if (ciMode == 26) {
+    options.setArgs("MESH REFINEMENT SCHEDULE", "2");
+    options.setArgs("MESH REFINEMENT NCUT", "2");
+    options.setArgs("MESH REFINEMENT SCALE", "8");
+    options.setArgs("NUMBER TIMESTEPS", std::string("0"));
+    options.setArgs("END TIME", std::string("0"));
+    options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
+
+    std::string fname = "ci23.fld";
+    nekrsCheck(!fs::exists(fname),
+               platform->comm.mpiComm,
+               EXIT_FAILURE,
+               "Missing checkpoint file %s for CI mode %d, Run cimode=23 first\n",
+               fname.c_str(),
+               ciMode);
+  }
+  // refine = 2,2 + checkpoint
+  if (ciMode == 27) {
+    options.setArgs("MESH REFINEMENT SCHEDULE", "2,2");
+    options.setArgs("MESH REFINEMENT NCUT", "4");
+    options.setArgs("MESH REFINEMENT SCALE", "64");
+    options.setArgs("NUMBER TIMESTEPS", std::string("0"));
+    options.setArgs("END TIME", std::string("0"));
+    options.setArgs("CHECKPOINT INTERVAL", std::string("0"));
+
+    std::string fname = "ci23.fld";
+    nekrsCheck(!fs::exists(fname),
+               platform->comm.mpiComm,
+               EXIT_FAILURE,
+               "Missing checkpoint file %s for CI mode %d, Run cimode=23 first\n",
+               fname.c_str(),
+               ciMode);
+
+    fname = "ci26.fld";
+    nekrsCheck(!fs::exists(fname),
+               platform->comm.mpiComm,
+               EXIT_FAILURE,
+               "Missing checkpoint file %s for CI mode %d, Run cimode=26 first\n",
+               fname.c_str(),
+               ciMode);
+  }
 }
 
 auto generatePoints(int nPoints, double R)
@@ -730,11 +800,11 @@ void ciTestSurfaceIntegral(nrs_t *nrs)
 
 void ciCheckpointing(nrs_t *nrs)
 {
-  auto run = [&](const std::string& engine, const std::string& restartFile, bool readOnly = false) 
+  auto run = [&](const std::string &tag, const std::string& engine, const std::string& restartFile, bool readOnly = false)
   {
-    const auto tol = 10 * std::numeric_limits<float>::epsilon();
+    auto FP64 = (!readOnly) && platform->options.compareArgs("CHECKPOINT PRECISION", "FP64");
+    const auto tol = (FP64) ? 10 * std::numeric_limits<double>::epsilon() : 10 * std::numeric_limits<float>::epsilon();
     const double time = 0.123; // just for testing, actual solution is based on t==0
-
     if (!readOnly) {
       platform->options.setArgs("CHECKPOINT ENGINE", engine);
       nrs->checkpointWriter = iofldFactory::create();
@@ -757,16 +827,16 @@ void ciCheckpointing(nrs_t *nrs)
     nek::userchk();
  
     auto err = nek::ptr<double>("errors");
-    CiEvalTest("velocity", err[0] < tol);
-    CiEvalTest("pressure", err[1] < tol);
-    CiEvalTest("scalar00", err[2] < tol);
-    CiEvalTest("scalar01", err[3] < tol);
-    CiEvalTest("time", std::abs(startTime- time) < tol);
+    CiEvalTest(tag + " velocity", err[0] < tol);
+    CiEvalTest(tag + " pressure", err[1] < tol);
+    CiEvalTest(tag + " scalar00", err[2] < tol);
+    CiEvalTest(tag + " scalar01", err[3] < tol);
+    CiEvalTest(tag + " time", std::abs(startTime- time) < tol);
 
     nrs->checkpointWriter.reset();
   };
 
-  auto breakMeshMesh = [&]() {
+  auto breakMesh = [&]() {
     auto mesh = (nrs->cht) ? nrs->cds->mesh[0] : nrs->mesh;
 
     platform->linAlg->fill(mesh->Nlocal, -0.12, mesh->o_x);
@@ -781,18 +851,66 @@ void ciCheckpointing(nrs_t *nrs)
     }
   };
 
-  run("NEK", "ethier0.f00000");
-  run("NEK", "ethier0.f00001+U+P+T+S");
+  if (ciMode==23) {
+    platform->options.setArgs("CHECKPOINT PRECISION", "FP64");
+    platform->options.setArgs("CHECKPOINT OUTPUT MESH", "TRUE");
+    run("1", "NEK", "ethier0.f00000"); // FP64, with mesh
+    platform->options.setArgs("CHECKPOINT PRECISION", "FP32");
 
-  breakMeshMesh(); // force loading mesh from restart
-  run("NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
+    run("2", "NEK", "ethier0.f00001"); // FP32, with mesh
+    platform->options.setArgs("CHECKPOINT OUTPUT MESH", "FALSE");
+    run("3", "NEK", "ethier0.f00001+U+P+T+S", true);
 
-  run("ADIOS", "ethier.bp");
-  run("ADIOS", "ethier.bp+int", true);
+    breakMesh(); // force loading mesh from restart
+    run("4", "NEK", "ethier0.f00000+X,ethier0.f00001+U+P+S", true);
+
+    platform->options.setArgs("CHECKPOINT READ USE CRYSTAL ROUTER", "TRUE");
+    run("5", "NEK", "ethier0.f00001", true); // FP32
+    run("6", "NEK", "ethier0.f00000", true); // FP64
+    platform->options.setArgs("CHECKPOINT READ USE CRYSTAL ROUTER", "FALSE");
+
+    run("7", "ADIOS", "ethier.bp");
+    run("8", "ADIOS", "ethier.bp+int", true);
+
+    MPI_Barrier(platform->comm.mpiComm);
+    if (platform->comm.mpiRank == 0) {
+      std::rename("ethier0.f00000", "ci23.fld"); // for cimode = 26, 27
+    }
+    MPI_Barrier(platform->comm.mpiComm);
+  }
+
+  if (ciMode==26) { // ref = 2
+    run("1", "NEK", "ethierRefine0.f00000");
+    run("2", "NEK", "ci23.fld+U+P+S+refine=2",true);
+    breakMesh();
+    run("3", "NEK", "ethierRefine0.f00000+X,ci23.fld+refine=2+U+P+S",true);
+    run("4", "NEK", "ethierRefine0.f00001");
+    run("5", "ADIOS", "ethierRefine.bp");
+
+    MPI_Barrier(platform->comm.mpiComm);
+    if (platform->comm.mpiRank == 0) {
+      std::rename("ethierRefine0.f00000", "ci26.fld"); // for cimode = 27
+    }
+    MPI_Barrier(platform->comm.mpiComm);
+  }
+
+  if (ciMode==27) { // refine = 2,2
+    run("1", "NEK", "ethierRefine0.f00000");
+    run("2", "NEK", "ci26.fld+U+P+S+refine=2",true);
+    run("3", "NEK", "ci23.fld+U+P+S+refine=2;2",true);
+    breakMesh();
+    run("4", "NEK", "ethierRefine0.f00000+X,ci23.fld+U+refine=2;2,ci26.fld+P+S+refine=2",true);
+    run("5", "NEK", "ethierRefine0.f00001");
+    run("6", "ADIOS", "ethierRefine.bp");
+  }
 }
 
 void ciTestDistance(nrs_t *nrs)
 {
+  if (std::fetestexcept(FE_INVALID)) {
+    throw std::runtime_error("floating-point exception occured!");
+  }
+
   auto mesh = nrs->mesh;
 
   int nbID = 1;
@@ -977,10 +1095,6 @@ void ciTestErrors(nrs_t *nrs,
                   occa::kernel exactUVWPKernel,
                   occa::kernel RKKernel)
 {
-  if (std::fetestexcept(FE_INVALID)) {
-    throw std::runtime_error("floating-point exception occured!");
-  }  
-
   const int rank = platform->comm.mpiRank;
 
   if (ciMode == 15) {
@@ -1007,7 +1121,8 @@ void ciTestErrors(nrs_t *nrs,
     return; // don't run the rest of the tests
   }
 
-  if (tstep == 1 && ciMode != 7 && ciMode != 13 && ciMode != 8) {
+  if (tstep == 1 && ciMode != 7 && ciMode != 13 && ciMode != 8 &&
+      ciMode != 24 && ciMode != 25 && ciMode != 26 && ciMode != 27) {
     const auto NiterP = nrs->pSolver->Niter();
 
     int expectedNiterP = 7; 
@@ -1400,7 +1515,18 @@ void ciTestErrors(nrs_t *nrs,
     prTest = err[1] < 8e-4;
     break;
   }
-
+  case 24:
+  case 25:
+  {
+    velIterTest < 30;
+    s1Test = err[2] < 5.42E-12;
+    s2Test = err[3] < 6.30E-12;
+    pIterTest = NiterP < 10;
+    vxTest = err[0] < 2.77E-10;
+    prTest = err[1] < 7.14E-10;
+    break;
+  }
+ 
   }
 
   if (nrs->timeStepConverged) {

@@ -113,7 +113,7 @@ struct fldData {
 };
 
 fldData openFld(const std::string& filename, std::vector<std::string>& _availableVariables);
-void readFld(fldData& data);
+void readFld(fldData& data, std::vector<int> refineSchedule = {});
 void writeFld(const std::string& filename,
               const fldData& data,
               bool FP64 = false,

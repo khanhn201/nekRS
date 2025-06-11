@@ -118,7 +118,7 @@ c-----------------------------------------------------------------------
       return
       end
 c-----------------------------------------------------------------------
-      subroutine nekf_setup(ifflow_in, 
+      subroutine nekf_setup(ifflow_in, refine, refineSize,
      $                      bIDMap, bIDMapSize, bIDtMap, bIDtMapSize,
      $                      npscal_in, idpss_in, p32, mpart, contol,
      $                      rho, mue, rhoCp, lambda, stsform) 
@@ -127,6 +127,9 @@ c-----------------------------------------------------------------------
       include 'TOTAL'
       include 'DOMAIN'
       include 'NEKINTF'
+
+      integer refineSize
+      integer refine(refineSize)
 
       integer bIDMapSize
       integer bIDtMapSize
@@ -201,11 +204,13 @@ c-----------------------------------------------------------------------
       endif
 #endif
 
+      call ifill(boundaryID, -1, 6*lelv)
+      call ifill(boundaryIDt, -1, 6*lelt)
+
       ifld_bId = 2
       if(ifflow) ifld_bId = 1
       do iel = 1,nelv
       do ifc = 1,2*ndim
-         boundaryID(ifc,iel) = -1
          if(bc(5,ifc,iel,ifld_bId).gt.0) then
            boundaryID(ifc,iel) = bc(5,ifc,iel,ifld_bId)
            idx = ibsearch(bIDMap, bIDMapSize, bc(5,ifc,iel,ifld_bId))
@@ -220,7 +225,6 @@ c-----------------------------------------------------------------------
       if(nelgt.ne.nelgv) then 
         do iel = 1,nelt
         do ifc = 1,2*ndim
-         boundaryIDt(ifc,iel) = -1
          if(bc(5,ifc,iel,2).gt.0) then
            boundaryIDt(ifc,iel) = bc(5,ifc,iel,2)
            idx = ibsearch(bIDtMap, bIDtMapSize, bc(5,ifc,iel,2))
@@ -257,6 +261,10 @@ c-----------------------------------------------------------------------
 
       if(nio.eq.0) write(6,*) 'call usrdat2'
       etime1 = dnekclock_sync()
+      do iref=1,refineSize
+        call usrdat2_oct(refine(iref))
+      enddo
+
       call usrdat2
       etime2 = dnekclock_sync()
       if(nio.eq.0) write(6,998) ' done :: usrdat2', etime2-etime1
@@ -1359,6 +1367,7 @@ c-----------------------------------------------------------------------
      $                        commrs,rsH,ierr)
 
           if (ierr .ne. 0 ) call exitti('MPI_Win_allocate failed!$',0)
+          call rzero(wk,lwk) ! avoid un-initialized values, FE_INVALID, in h_refine
         endif
       endif
 #endif

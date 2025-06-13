@@ -397,6 +397,28 @@ void ciSetup(MPI_Comm comm, setupAide &options)
     options.setArgs("VELOCITY INITIAL GUESS", "PROJECTION-ACONJ");
     options.setArgs("PRESSURE COARSE SOLVER", "XXT");
   }
+
+  if (ciMode == 29) { // same as 18, no cvode, no dealiasing, test hpfrt
+    options.setArgs("ADVECTION TYPE", "CONVECTIVE");
+    options.setArgs("SCALAR00 REGULARIZATION METHOD", "HPFRT");
+    options.setArgs("SCALAR01 REGULARIZATION METHOD", "HPFRT");
+    options.setArgs("SCALAR00 HPFRT MODES", "1");
+    options.setArgs("SCALAR01 HPFRT MODES", "1");
+    options.setArgs("SCALAR00 HPFRT STRENGTH", "10.0");
+    options.setArgs("SCALAR01 HPFRT STRENGTH", "10.0");
+    options.setArgs("SUBCYCLING STEPS", std::string("1"));
+  }
+
+  if (ciMode == 30) { // both scalars, no dealiasing, explicit filter
+    options.setArgs("ADVECTION TYPE", "CONVECTIVE");
+    options.setArgs("SCALAR00 REGULARIZATION METHOD", "EXPLICIT FILTER");
+    options.setArgs("SCALAR01 REGULARIZATION METHOD", "EXPLICIT FILTER");
+    options.setArgs("SCALAR00 EXPLICIT FILTER MODES", "1");
+    options.setArgs("SCALAR01 EXPLICIT FILTER MODES", "1");
+    options.setArgs("SCALAR00 EXPLICIT FILTER STRENGTH", "0.001");
+    options.setArgs("SCALAR01 EXPLICIT FILTER STRENGTH", "0.001");
+    options.setArgs("SUBCYCLING STEPS", std::string("1"));
+  }
 }
 
 auto generatePoints(int nPoints, double R)
@@ -1238,7 +1260,7 @@ void ciTestErrors(nrs_t *nrs,
   s1IterTest = abs(NiterS01 - 2) < 2;
   s2IterTest = abs(NiterS02 - 2) < 2;
 
-  if (ciMode == 16 || ciMode == 17 || ciMode == 18) {
+  if (ciMode == 16 || ciMode == 17 || ciMode == 18 || ciMode == 29 || ciMode == 30) {
     NiterS01 = numCVODERHS / tstep; // average number of RHS + linIters per step
     NiterS02 = numCVODERHS / tstep;
   }
@@ -1501,7 +1523,30 @@ void ciTestErrors(nrs_t *nrs,
     s2IterTest = abs(NiterS02 - 3.5) < EPS; // nli
     break;
   }
-  case 17:
+  case 29:
+  {
+    velIterTest = abs(NiterU - 15) < 2;
+    s1Test = abs((err[2] - 2.51E-11) / err[2]) < EPS;
+    s2Test = abs((err[3] - 2.69E-11) / err[3]) < EPS;
+    pIterTest = abs(NiterP - 6) < 2;
+    vxTest = abs((err[0] - 2.78E-10) / err[0]) < EPS;
+    prTest = abs((err[1] - 7.11E-10) / err[1]) < EPS;
+    s1IterTest = abs(NiterS01 - 3.5) < EPS; // nsteps
+    s2IterTest = abs(NiterS02 - 3.5) < EPS; // nli
+    break;
+  }
+  case 30:
+  {
+    velIterTest = abs(NiterU - 15) < 2;
+    s1Test = abs((err[2] - 6.67E-12) / err[2]) < EPS;
+    s2Test = abs((err[3] - 7.50E-12) / err[3]) < EPS;
+    pIterTest = abs(NiterP - 6) < 2;
+    vxTest = abs((err[0] - 2.78E-10) / err[0]) < EPS;
+    prTest = abs((err[1] - 7.11E-10) / err[1]) < EPS;
+    s1IterTest = abs(NiterS01 - 3.5) < EPS; // nsteps
+    s2IterTest = abs(NiterS02 - 3.5) < EPS; // nli
+    break;
+  }  case 17:
   {
     velIterTest = abs(NiterU - 15) < 2;
     s1Test = abs((err[2] - 6.11E-12) / err[2]) < EPS;

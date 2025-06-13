@@ -136,6 +136,7 @@ public:
   occa::memory o_filterRT;
 
   occa::kernel filterRTKernel;
+  occa::kernel explicitFilterKernel;
   occa::kernel advectMeshVelocityKernel;
   occa::kernel pressureAddQtlKernel;
   occa::kernel pressureStressKernel;
@@ -206,6 +207,7 @@ public:
   void initStep(double time, dfloat dt, int tstep);
   dfloat adjustDt(int tstep);
   bool runStep(std::function<bool(int)> convergenceCheck, int stage);
+  void applyExplicitFilter();
   void finishStep();
 
   void saveSolutionState();

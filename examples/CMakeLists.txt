@@ -101,7 +101,7 @@ endfunction()
 ## TESTS ##
 
 add("ethier-buildOnly" 2 "ethier.par" "1" "${USE_FP32}" "${EXAMPLES_DIR}/ethier" ON)
-add("ethier" 2 "ethier.par" "1;2;4;7;8;9;10;11;12;14;15;19;23" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")
+add("ethier" 2 "ethier.par" "1;2;4;7;8;9;10;11;12;14;15;19;23;29;30" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")
 
 if(NOT BACKEND STREQUAL "DPCPP")
   add("ethier" 2 "ethier.par" "3" "${USE_FP32}" "${dir}" "${BUILD_ONLY}")

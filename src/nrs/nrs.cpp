@@ -105,6 +105,9 @@ static void assignKernels(nrs_t *nrs)
     kernelName = "vectorFilterRT" + suffix;
     nrs->filterRTKernel = platform->kernelRequests.load("core-" + kernelName);
 
+    kernelName = "vectorExplicitFilter" + suffix;
+    nrs->explicitFilterKernel = platform->kernelRequests.load("core-" + kernelName);
+
     kernelName = "sumMakef";
     nrs->sumMakefKernel = platform->kernelRequests.load(section + kernelName);
 
@@ -789,6 +792,14 @@ void nrs_t::init()
     platform->options.getArgs("VELOCITY HPFRT MODES", nModes);
     this->filterS = -std::abs(strength);
     this->o_filterRT = lowPassFilterSetup(mesh, nModes);
+  }
+
+  if (platform->options.compareArgs("VELOCITY REGULARIZATION METHOD", "EXPLICIT FILTER")) {
+    int nModes = -1;
+    dfloat strength = 1.0;
+    platform->options.getArgs("VELOCITY EXPLICIT FILTER STRENGTH", strength);
+    platform->options.getArgs("VELOCITY EXPLICIT FILTER MODES", nModes);
+    this->o_filterRT = explicitFilterSetup("vel", mesh, nModes, strength);
   }
 
   assignKernels(this);

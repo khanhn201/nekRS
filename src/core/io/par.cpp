@@ -1478,12 +1478,14 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
     if (ini->extract(parSection, "regularization", regularization)) {
       const std::vector<std::string> validValues = {
           {"hpfrt"},
+          {"explicit"},
           {"none"},
           {"avm"},
           {"c0"},
           {"nmodes"},
           {"cutoffratio"},
           {"scalingcoeff"},
+          {"filterweight"},
           {"activationwidth"},
           {"decaythreshold"},
           {"noisethreshold"},
@@ -1500,13 +1502,14 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
       // new command syntax
       std::string filtering;
       ini->extract(parSection, "filtering", filtering);
-      if (filtering == "hpfrt") {
+      if (filtering == "hpfrt" || filtering == "explicit") {
         append_error("cannot specify both regularization and filtering!\n");
       }
       const bool usesAVM = std::find(list.begin(), list.end(), "avm") != list.end();
       const bool usesHPFRT = std::find(list.begin(), list.end(), "hpfrt") != list.end();
-      if (!usesAVM && !usesHPFRT) {
-        append_error("regularization must use avm or hpfrt!\n");
+      const bool usesEXPLICIT = std::find(list.begin(), list.end(), "explicit") != list.end();
+      if (!usesAVM && !usesHPFRT && !usesEXPLICIT) {
+        append_error("regularization must use avm, hpfrt, or explicit!\n");
       }
       if (usesAVM && isVelocity) {
         append_error("avm regularization is only enabled for scalars!\n");
@@ -1515,6 +1518,11 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
       if (usesHPFRT) {
         options.setArgs(parPrefix + "HPFRT MODES", "1");
         options.setArgs(parPrefix + "REGULARIZATION METHOD", "HPFRT");
+      }
+
+      if (usesEXPLICIT) {
+        options.setArgs(parPrefix + "EXPLICIT FILTER MODES", "1");
+        options.setArgs(parPrefix + "REGULARIZATION METHOD", "EXPLICIT FILTER");
       }
 
       if (usesAVM) {
@@ -1564,20 +1572,21 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
 
       }
 
-      if (usesHPFRT) {
+      if (usesHPFRT || usesEXPLICIT) {
+        const std::string filterTag = (usesHPFRT) ? "HPFRT" : "EXPLICIT FILTER";
         bool setsStrength = false;
         for (std::string s : list) {
           const auto nmodeStr = parseValueForKey(s, "nmodes");
           if (!nmodeStr.empty()) {
             double value = std::stod(nmodeStr);
             value = round(value);
-            options.setArgs(parPrefix + "HPFRT MODES", to_string_f(value));
+            options.setArgs(parPrefix + filterTag + " MODES", to_string_f(value));
           }
           const auto cutoffRatioStr = parseValueForKey(s, "cutoffratio");
           if (!cutoffRatioStr.empty()) {
             double filterCutoffRatio = std::stod(cutoffRatioStr);
             double NFilterModes = round((N + 1) * (1 - filterCutoffRatio));
-            options.setArgs(parPrefix + "HPFRT MODES", to_string_f(NFilterModes));
+            options.setArgs(parPrefix + filterTag + " MODES", to_string_f(NFilterModes));
           }
 
           const auto scalingCoeffStr = parseValueForKey(s, "scalingcoeff");
@@ -1588,12 +1597,23 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
             if (err) {
               append_error("Invalid expression for scalingCoeff");
             }
-            options.setArgs(parPrefix + "HPFRT STRENGTH", to_string_f(weight));
+            options.setArgs(parPrefix + filterTag + " STRENGTH", to_string_f(weight));
+          }
+
+          const auto filterWeightStr = parseValueForKey(s, "filterweight");
+          if (!filterWeightStr.empty()) {
+            setsStrength = true;
+            int err = 0;
+            double weight = parseFormula(filterWeightStr.c_str(), &err);
+            if (err) {
+              append_error("Invalid expression for filterWeight");
+            }
+            options.setArgs(parPrefix + filterTag + " STRENGTH", to_string_f(weight));
           }
         }
         if (!setsStrength) {
-          append_error("required parameter scalingCoeff for hpfrt regularization is not "
-                       "set!\n");
+          append_error("required parameter scalingCoeff for hpfrt (or explicit filter) "
+                       "regularization is not set!\n");
         }
       }
       return;
@@ -1601,17 +1621,18 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
       // fall back on old command syntax
       std::string filtering;
       ini->extract(parSection, "filtering", filtering);
-      if (filtering == "hpfrt") {
-        options.setArgs(parPrefix + "REGULARIZATION METHOD", "HPFRT");
+      if (filtering == "hpfrt" || filtering == "explicit") {
+        const std::string filterTag = (filtering=="hpfrt") ? "HPFRT" : "EXPLICIT FILTER";
+        options.setArgs(parPrefix + "REGULARIZATION METHOD", filterTag);
         if (ini->extract(parSection, "filterweight", sbuf)) {
           int err = 0;
           double weight = parseFormula(sbuf.c_str(), &err);
           if (err) {
             append_error("Invalid expression for filterWeight");
           }
-          options.setArgs(parPrefix + "HPFRT STRENGTH", to_string_f(weight));
+          options.setArgs(parPrefix + filterTag + " STRENGTH", to_string_f(weight));
         } else {
-          if (filtering == "hpfrt") {
+          if (filtering == "hpfrt" || filtering == "explicit") {
             append_error("cannot find mandatory parameter GENERAL:filterWeight");
           }
         }
@@ -1625,9 +1646,7 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
             NFilterModes = 1;
           }
         }
-        options.setArgs(parPrefix + "HPFRT MODES", to_string_f(NFilterModes));
-      } else if (filtering == "explicit") {
-        append_error("GENERAL::filtering = explicit not supported");
+        options.setArgs(parPrefix + filterTag + " MODES", to_string_f(NFilterModes));
       }
       return;
     } else {
@@ -1650,7 +1669,12 @@ void parseRegularization(const int rank, setupAide &options, inipp::Ini *ini, st
         options.setArgs(parPrefix + "HPFRT MODES", options.getArgs("HPFRT MODES"));
 
         if (defaultSettings.find("hpfrt") != std::string::npos) {
+          options.setArgs(parPrefix + "HPFRT MODES", options.getArgs("HPFRT MODES"));
           options.setArgs(parPrefix + "HPFRT STRENGTH", options.getArgs("HPFRT STRENGTH"));
+        }
+        if (defaultSettings.find("explicit") != std::string::npos) {
+          options.setArgs(parPrefix + "EXPLICIT FILTER MODES", options.getArgs("EXPLICIT FILTER MODES"));
+          options.setArgs(parPrefix + "EXPLICIT FILTER STRENGTH", options.getArgs("EXPLICIT FILTER STRENGTH"));
         }
 
         if (defaultSettings.find("avm") != std::string::npos) {

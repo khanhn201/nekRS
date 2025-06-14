@@ -79,7 +79,6 @@ echo "striping_unit 2097152" >> $s # should matchchunk size
 echo "export ROMIO_HINTS=.romio_hint" >> $SFILE # MPIIO-hint is for cray
 echo "export MPICH_MPIIO_STATS=1" >> $SFILE
 
-
 CMD=.lhelper
 echo "#!/bin/bash" > $CMD
 echo "gpu_id=\$(((PALS_LOCAL_RANKID / ${tiles_per_gpu}) % ${gpus_per_node}))" >> $CMD

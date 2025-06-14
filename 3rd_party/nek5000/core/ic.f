@@ -2794,7 +2794,9 @@ c-----------------------------------------------------------------------
            if(i.eq.nid) nelr = nelr + 1
         enddo
         nelBr = igl_running_sum(nelr) - nelr 
-        offs = nelBr ! cast to int*8
+
+c       offs = offs0 + nelBr*isize
+        offs = nelBr                    ! Force int*8 conversion
         offs = offs0 + offs*isize
 
         call addfid(hname,fid0r)

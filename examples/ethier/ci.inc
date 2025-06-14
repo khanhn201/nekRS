@@ -1571,7 +1571,7 @@ void ciTestErrors(nrs_t *nrs,
   case 24:
   case 25:
   {
-    velIterTest < 30;
+    velIterTest = NiterU < 30;
     s1Test = err[2] < 5.42E-12;
     s2Test = err[3] < 6.30E-12;
     pIterTest = NiterP < 10;

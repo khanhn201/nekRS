@@ -89,7 +89,6 @@ echo "striping_unit 2097152" >> $s # should matchchunk size
 echo "export ROMIO_HINTS=.romio_hint" >> $SFILE # MPIIO-hint is for cray
 echo "export MPICH_MPIIO_STATS=1" >> $SFILE
 
-
 CMD=.lhelper
 rm -f $CMD; sleep 0.1s
 echo "#!/bin/bash" > $CMD

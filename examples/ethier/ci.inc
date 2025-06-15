@@ -334,6 +334,7 @@ void ciSetup(MPI_Comm comm, setupAide &options)
 
   // refine = 2
   if (ciMode == 24) {
+    options.setArgs("END TIME", std::string("0.01"));
     options.setArgs("MESH REFINEMENT SCHEDULE", "2");
     options.setArgs("MESH REFINEMENT NCUT", "2");
     options.setArgs("MESH REFINEMENT SCALE", "8"); // 8x mesh size
@@ -343,6 +344,7 @@ void ciSetup(MPI_Comm comm, setupAide &options)
 
   // refine = 2,2
   if (ciMode == 25) {
+    options.setArgs("END TIME", std::string("0.005"));
     options.setArgs("MESH REFINEMENT SCHEDULE", "2,2");
     options.setArgs("MESH REFINEMENT NCUT", "4"); // = 2 x 2
     options.setArgs("MESH REFINEMENT SCALE", "64"); // 64x mesh size

@@ -1,10 +1,10 @@
 [GENERAL]
-polynomialOrder = 5
+polynomialOrder = 7
 #startFrom = "restart.fld"
-numSteps = 1000
+numSteps = 100
 dt = 1e-04
 timeStepper = tombo2
-checkpointInterval = 100
+checkpointInterval = 50
 
 udf = "../eddy.udf"
 

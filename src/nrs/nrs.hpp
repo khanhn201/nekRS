@@ -23,6 +23,8 @@ class nrs_t : public solver_t
   using userVelocityImplicitLinearTerm_t = std::function<occa::memory(double)>;
   using userScalarImplicitLinearTerm_t = std::function<occa::memory(double, int)>;
 
+  using userMeshReferencePosition_t = std::function<void(int, occa::memory, occa::memory, occa::memory, double)>;
+
 public:
   userVelocitySource_t userVelocitySource = nullptr;
   userScalarSource_t userScalarSource = nullptr;
@@ -33,6 +35,9 @@ public:
   userConvergenceCheck_t userConvergenceCheck = nullptr;
   userVelocityImplicitLinearTerm_t userVelocityImplicitLinearTerm = nullptr;
   userScalarImplicitLinearTerm_t userScalarImplicitLinearTerm = nullptr;
+
+  // neknek
+  userMeshReferencePosition_t userMeshReferencePosition = nullptr;
 
   void addUserCheckpointField(const std::string& name, const std::vector<deviceMemory<dfloat>>& o_fld)
   {

@@ -235,7 +235,7 @@ void UDF_Setup()
 
 #if 0 // experimental
   if (platform->options.compareArgs("MOVING MESH", "TRUE")) {
-    nrs->neknek->userMeshReferencePosition = &userMeshPosition;
+    nrs->userMeshReferencePosition = &userMeshPosition;
   }
 #endif
 }

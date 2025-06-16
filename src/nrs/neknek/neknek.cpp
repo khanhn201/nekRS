@@ -67,7 +67,7 @@ void neknek_t::reserveAllocation()
   }
 }
 
-void neknek_t::updateInterpPoints()
+void neknek_t::updateInterpPoints(double time)
 {
   // called in case of moving mesh ONLY
   if (!this->globalMovingMesh) {
@@ -76,9 +76,18 @@ void neknek_t::updateInterpPoints()
 
   auto mesh = (nrs->cht) ? nrs->cds->mesh[0] : nrs->mesh;
 
-  this->interpolator.reset();
-  this->interpolator =
-      std::make_shared<pointInterpolation_t>(mesh, platform->comm.mpiCommParent, true, intBIDs);
+  static bool firstCall = true;
+  if (firstCall) {
+    platform->options.getArgs("START TIME", this->timeMovingMeshSetup);
+    firstCall = false;
+  }
+
+  if (!this->userMeshReferencePosition) {
+    this->interpolator.reset();
+    this->interpolator =
+        std::make_shared<pointInterpolation_t>(mesh, platform->comm.mpiCommParent, true, intBIDs);
+    this->timeMovingMeshSetup = time;
+  }
   this->interpolator->setTimerName("neknek_t::");
 
   // neknekX[:] = mesh->x[pointMap[:]]
@@ -90,6 +99,10 @@ void neknek_t::updateInterpPoints()
                                this->o_x_,
                                this->o_y_,
                                this->o_z_);
+
+  if (this->userMeshReferencePosition) {
+    this->userMeshReferencePosition(this->npt_, this->o_x_, this->o_y_, this->o_z_, time - this->timeMovingMeshSetup);
+  }
 
   this->interpolator->setPoints(this->o_x_, this->o_y_, this->o_z_, this->o_session_);
 
@@ -345,7 +358,7 @@ void neknek_t::updateBoundary(int tstep, int stage, double time)
 
   const bool exchangeAllTimes = false;
   const bool lagState = (stage == 1);
-  exchange(exchangeAllTimes, lagState);
+  exchange(time, exchangeAllTimes, lagState);
 
   // lag state, update timestepper coefficients and compute extrapolated state
   if (stage == 1) {
@@ -471,7 +484,7 @@ void neknek_t::extrapolate(int tstep)
   }
 }
 
-void neknek_t::exchange(bool allTimeStates, bool lagState)
+void neknek_t::exchange(double time, bool allTimeStates, bool lagState)
 {
   // do not invoke barrier in timer_t::tic
   platform->timer.tic("neknek sync");
@@ -481,7 +494,7 @@ void neknek_t::exchange(bool allTimeStates, bool lagState)
 
   if (this->globalMovingMesh) {
     platform->timer.tic("neknek updateInterpPoints");
-    this->updateInterpPoints();
+    this->updateInterpPoints(time);
     platform->timer.toc("neknek updateInterpPoints");
 
     this->recomputePartition = true;

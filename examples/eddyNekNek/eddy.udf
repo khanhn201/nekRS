@@ -222,10 +222,22 @@ void userq(double time)
   dpdx(mesh->Nlocal, time, mesh->o_x, mesh->o_y, mesh->o_z, nrs->cds->o_NLT);
 }
 
+void userMeshPosition(int npts, occa::memory o_x, occa::memory o_y, occa::memory o_z, double timeDifference)
+{
+  // send the INT boundary points back in time
+  // TODO
+}
+
 void UDF_Setup()
 {
   nrs->userConvergenceCheck = timeStepConverged;
   nrs->userScalarSource = &userq;
+
+#if 0 // experimental
+  if (platform->options.compareArgs("MOVING MESH", "TRUE")) {
+    nrs->neknek->userMeshReferencePosition = &userMeshPosition;
+  }
+#endif
 }
 
 void UDF_ExecuteStep(double time, int tstep)

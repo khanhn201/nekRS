@@ -14,13 +14,15 @@ bool neknekCoupled();
 
 class neknek_t
 {
+  using userMeshReferencePosition_t = std::function<void(int, occa::memory, occa::memory, occa::memory, double)>;
 
 public:
   neknek_t(nrs_t *_nrs, dlong _nsessions, dlong _sessionID);
 
+  userMeshReferencePosition_t userMeshReferencePosition = nullptr;
 
   void updateBoundary(int tstep, int stage, double time);
-  void exchange(bool allTimeStates = false, bool lag = false);
+  void exchange(double time, bool allTimeStates = false, bool lag = false);
 
   // multi-rate specific functions
   void exchangeTimes(double time);
@@ -158,7 +160,7 @@ private:
   void lag();
   void extrapolate(int tstep);
   void reserveAllocation();
-  void updateInterpPoints();
+  void updateInterpPoints(double time);
   void findIntPoints();
   void setup();
 
@@ -200,6 +202,9 @@ private:
   dlong sessionID_;
 
   dlong Nscalar_;
+
+  // record the time when mesh is set for moving mesh
+  double timeMovingMeshSetup = 0.0;
 
   std::shared_ptr<pointInterpolation_t> interpolator;
 

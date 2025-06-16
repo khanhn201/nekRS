@@ -10,7 +10,7 @@ void neknek_t::exchangeTimes(double time)
 
   if (this->globalMovingMesh) {
     platform->timer.tic("neknek updateInterpPoints", 1);
-    this->updateInterpPoints();
+    this->updateInterpPoints(time);
     platform->timer.toc("neknek updateInterpPoints");
 
     this->recomputePartition = true;

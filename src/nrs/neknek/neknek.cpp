@@ -344,6 +344,10 @@ neknek_t::neknek_t(nrs_t *nrs_, dlong nsessions, dlong sessionID)
   this->fixSurfaceFluxKernel = platform->kernelRequests.load("fixSurfaceFlux");
   this->extrapolateBoundaryKernel = platform->kernelRequests.load("extrapolateBoundary");
   this->mapScalarKernel = platform->kernelRequests.load("mapScalar");
+
+  if (nrs_->userMeshReferencePosition) {
+    this->userMeshReferencePosition = nrs_->userMeshReferencePosition;
+  }
 }
 
 void neknek_t::updateBoundary(int tstep, int stage, double time)

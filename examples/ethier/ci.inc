@@ -413,8 +413,8 @@ void ciSetup(MPI_Comm comm, setupAide &options)
 
   if (ciMode == 30) { // both scalars, no dealiasing, explicit filter
     options.setArgs("ADVECTION TYPE", "CONVECTIVE");
-    options.setArgs("SCALAR00 REGULARIZATION METHOD", "EXPLICIT FILTER");
-    options.setArgs("SCALAR01 REGULARIZATION METHOD", "EXPLICIT FILTER");
+    options.setArgs("SCALAR00 REGULARIZATION METHOD", "EXPLICIT");
+    options.setArgs("SCALAR01 REGULARIZATION METHOD", "EXPLICIT");
     options.setArgs("SCALAR00 EXPLICIT FILTER MODES", "1");
     options.setArgs("SCALAR01 EXPLICIT FILTER MODES", "1");
     options.setArgs("SCALAR00 EXPLICIT FILTER STRENGTH", "0.001");

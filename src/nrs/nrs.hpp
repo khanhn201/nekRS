@@ -136,7 +136,8 @@ public:
   occa::memory o_filterRT;
 
   occa::kernel filterRTKernel;
-  occa::kernel explicitFilterKernel;
+  occa::kernel vectorExplicitFilterKernel;
+  occa::kernel scalarExplicitFilterKernel;
   occa::kernel advectMeshVelocityKernel;
   occa::kernel pressureAddQtlKernel;
   occa::kernel pressureStressKernel;
@@ -244,6 +245,8 @@ public:
   void Qcriterion(const occa::memory &o_U, occa::memory &o_Q);
   occa::memory Qcriterion(const occa::memory &o_U);
   occa::memory Qcriterion();
+
+  void applyExplicitFilter(std::string tag, mesh_t *mesh, occa::memory &o_fld, const int filterNc, const dfloat filterWght);
 
   void restartFromFile(const std::string& restartStr);
   void restartFromFiles(const std::string& restartStr);

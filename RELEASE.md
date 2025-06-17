@@ -16,7 +16,7 @@ For code developers, please note that major changes are expected in the upcoming
 * New command-line option `--output <path-to-logfile>` to specify the path to the logfile.
 * Support XXT as a `coarseSolver` option (see *ethier* `ciMode=28`).
 * Support for Intel GPUs on ALCF/Aurora (see `nrsqsub_aurora`).
-* Support Nek5000's explicit filter with `regularization=explicit` (see *ethier* `ciMode=30`).
+* Support Nek5000's explicit filter with `regularization=explicit` (see *ethier* `ciMode=30`). Add `nrs_t::applyExplicitFilter` API to allow user calling it at any time.
 
 **Other changes:**
 

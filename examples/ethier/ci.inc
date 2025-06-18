@@ -988,6 +988,41 @@ void ciTestDistance(nrs_t *nrs)
   }
 }
 
+void ciTestExplicitFilter(nrs_t *nrs)
+{
+  auto mesh = nrs->mesh;
+  auto o_fld = platform->deviceMemoryPool.reserve<dfloat>(mesh->Nlocal);
+  {
+    std::vector<dfloat> fld(mesh->Nlocal);
+    auto [x, y, z] = mesh->xyzHost();
+    for (int i = 0; i < mesh->Nlocal; i++) {
+      const dfloat arg = x[i] * y[i] + z[i] * z[i];
+      fld[i] = exp(sin(M_PI * arg));
+    }
+    o_fld.copyFrom(fld.data(), mesh->Nlocal);
+  }
+
+  dfloat energy0 = platform->linAlg->weightedNorm2(mesh->Nlocal, mesh->o_LMM, o_fld, platform->comm.mpiComm) / mesh->volume;
+  if(platform->comm.mpiRank == 0){
+    printf("ciTestExplicitFilter (N=%d, ifiltered=%d) energy: %.6e\n", mesh->N, 0, energy0);
+  }
+
+  dfloat energy1, energy;
+  for (int i = 0; i < 20; i++) {
+    nrs->applyExplicitFilter("usr", mesh, o_fld, 4, 0.9);
+
+    energy1 = energy;
+    energy = platform->linAlg->weightedNorm2(mesh->Nlocal, mesh->o_LMM, o_fld, platform->comm.mpiComm) / mesh->volume;
+
+    if(platform->comm.mpiRank == 0){
+      printf("ciTestExplicitFilter (N=%d, ifiltered=%d) energy: %.6e\n", mesh->N, i+1, energy);
+    }
+  }
+
+  CiEvalTest("explicitFilter energy decay", energy < energy0 && energy > 0.9 * energy);
+  CiEvalTest("explicitFilter energy flat", abs(energy - energy1) < 1e-6);
+}
+
 dfloat sumRef(dfloat const *const array, const int size, MPI_Comm comm)
 {
   dfloat sumr = 0.0;

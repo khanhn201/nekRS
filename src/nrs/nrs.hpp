@@ -208,7 +208,6 @@ public:
   void initStep(double time, dfloat dt, int tstep);
   dfloat adjustDt(int tstep);
   bool runStep(std::function<bool(int)> convergenceCheck, int stage);
-  void applyExplicitFilter();
   void finishStep();
 
   void saveSolutionState();
@@ -246,6 +245,7 @@ public:
   occa::memory Qcriterion(const occa::memory &o_U);
   occa::memory Qcriterion();
 
+  void applyExplicitFilter();
   void applyExplicitFilter(std::string tag, mesh_t *mesh, occa::memory &o_fld, const int filterNc, const dfloat filterWght);
 
   void restartFromFile(const std::string& restartStr);

@@ -118,6 +118,23 @@ void codedFixedValueScalar(bcData *bc)
   }
 }
 
+@kernel void userMeshPositionKernel(const dlong Ntotal,
+                      @ restrict dfloat *X,
+                      @ restrict dfloat *Y,
+                      @ restrict dfloat *Z,
+                      double timeDifference)
+{
+  for (dlong n = 0; n < Ntotal; ++n; @tile(p_blockSize, @outer, @inner)) {
+    const dfloat xc = (X[n] - p_pi);
+    const dfloat yc = (Y[n] - p_pi);
+    const dfloat rc = sqrt(xc * xc + yc * yc);
+    const dfloat thv = atan2(yc, xc) + timeDifference*p_omega;
+    X[n] = p_pi + rc * cos(thv);
+    Y[n] = p_pi + rc * sin(thv);
+  }
+}
+
+
 void dP(dfloat *dpdx, dfloat xx, dfloat yy, dfloat zz, dfloat time, dfloat visc)
 {
   const dfloat e = exp(-50 * time * visc);
@@ -168,6 +185,15 @@ void dP(dfloat *dpdx, dfloat xx, dfloat yy, dfloat zz, dfloat time, dfloat visc)
 }
 
 #endif
+
+void userMeshPosition(int npts, occa::memory o_x, occa::memory o_y, occa::memory o_z, double timeDifference)
+{
+    userMeshPositionKernel(npts, o_x, o_y, o_z, timeDifference);
+}
+void userMeshPositionNull(int npts, occa::memory o_x, occa::memory o_y, occa::memory o_z, double timeDifference)
+{
+//    return;
+}
 
 void UDF_LoadKernels(deviceKernelProperties& kernelInfo)
 {
@@ -222,22 +248,21 @@ void userq(double time)
   dpdx(mesh->Nlocal, time, mesh->o_x, mesh->o_y, mesh->o_z, nrs->cds->o_NLT);
 }
 
-void userMeshPosition(int npts, occa::memory o_x, occa::memory o_y, occa::memory o_z, double timeDifference)
-{
-  // send the INT boundary points back in time
-  // TODO
-}
 
 void UDF_Setup()
 {
   nrs->userConvergenceCheck = timeStepConverged;
   nrs->userScalarSource = &userq;
 
-#if 0 // experimental
-  if (platform->options.compareArgs("MOVING MESH", "TRUE")) {
-    nrs->userMeshReferencePosition = &userMeshPosition;
+  int userMeshPos = 0;
+  platform->par->extract("casedata", "USER_REF_POS", userMeshPos);
+  if (userMeshPos==1) {
+    // since the inside is rotating, only the boundary points on the outside need to be adjusted
+    nrs->userMeshReferencePosition = &userMeshPositionNull; // Inside domain
+    if (!platform->options.compareArgs("MOVING MESH", "TRUE")) { // Outside domain
+      nrs->userMeshReferencePosition = &userMeshPosition;
+    }
   }
-#endif
 }
 
 void UDF_ExecuteStep(double time, int tstep)

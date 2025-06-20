@@ -51,7 +51,13 @@ void initializeAscent()
   const double tStart = MPI_Wtime();
 
   MPI_Comm comm;
-  MPI_Comm_dup(platform->comm.mpiComm, &comm);
+  bool ascentGlobal = false;
+  platform->par->extract("neknek", "ascentUseGlobalComm", ascentGlobal);
+  if (ascentGlobal) {
+    MPI_Comm_dup(platform->comm.mpiCommParent, &comm);
+  } else {
+    MPI_Comm_dup(platform->comm.mpiComm, &comm);
+  }
 
   conduit::utils::set_warning_handler(errHandler);
   conduit::utils::set_error_handler(errHandler);

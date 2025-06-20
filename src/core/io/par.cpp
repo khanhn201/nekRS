@@ -151,6 +151,7 @@ static std::vector<std::string> generalKeys = {
 
 static std::vector<std::string> neknekKeys = {
     {"boundaryextorder"},
+    {"ascentuseglobalcomm"},
     {"multiratetimestepping"},
 };
 

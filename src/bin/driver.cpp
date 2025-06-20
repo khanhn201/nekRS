@@ -255,7 +255,7 @@ int main(int argc, char** argv)
     if (rank == 0) std::cout << std::endl;
 
     fflush(stdout);
-    MPI_Pcontrol(1);
+//    MPI_Pcontrol(1);
     while (!isLastStep) {
       MPI_Barrier(comm);
       const double timeStartStep = MPI_Wtime();
@@ -335,7 +335,7 @@ int main(int argc, char** argv)
 
       if (tStep % 100 == 0) fflush(stdout);
     }
-    MPI_Pcontrol(0);
+ //   MPI_Pcontrol(0);
   }
   catch (const std::overflow_error& e)
   {

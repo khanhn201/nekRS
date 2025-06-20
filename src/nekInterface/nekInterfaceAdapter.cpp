@@ -799,7 +799,7 @@ void mkSIZE(int lx1,
     } else if (strstr(line, "parameter (ldimt=") != NULL) {
       snprintf(line, lineSize, "      parameter (ldimt=%d)\n", ldimt);
     } else if (strstr(line, "parameter (mxprev=") != NULL) {
-      snprintf(line, lineSize, "      parameter (mxprev=%d)\n", 1);
+      snprintf(line, lineSize, "      parameter (mxprev=%d)\n", 20);
     } else if (strstr(line, "parameter (lgmres=") != NULL) {
       snprintf(line, lineSize, "      parameter (lgmres=%d)\n", 1);
     } else if (strstr(line, "parameter (lxo=") != NULL) {

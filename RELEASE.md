@@ -16,14 +16,15 @@ For code developers, please note that major changes are expected in the upcoming
 * New command-line option `--output <path-to-logfile>` to specify the path to the logfile.
 * Support XXT as a `coarseSolver` option (see *ethier* `ciMode=28`).
 * Support for Intel GPUs on ALCF/Aurora (see `nrsqsub_aurora`).
-* Support Nek5000's explicit filter with `regularization=explicit` (see *ethier* `ciMode=30`).
+* Support Nek5000's explicit filter with `regularization=explicit` (see *ethier* `ciMode=30`). Add `nrs_t::applyExplicitFilter` API to allow user calling it at any time.
+* Add module setup and installation guide for HPC (e.g., `nrsman hpc aurora`).
 
 **Other changes:**
 
 * Add additional timers during setup.
 * Incorporate Nek5000’s nullspace treatment in GMRES, controlled via `setArgs("PGMRES NULLSPACE ZERO MEAN ALGEBRAIC NORM", "TRUE")`.
 * Revert multithread JIT to avoid possibility of hangs on Aurora and Frontier.
-* (WIP) Update scripts for Frontier (amd/gnu?), Aurora, Polaris (Perlmutter)
+* Update scripts for Frontier (`USE_COMPILER=amd` or `gnu`), Aurora, Polaris, and Perlmutter (unchanged) and support the `USE_ASCENT=1` option.
 * Add a workaround option avoid restart hangs via crystal router, controlled by
   `setArgs("CHECKPOINT READ USE CRYSTAL ROUTER", "TRUE")`.
 * Add `[MESH] maxElements` to specify `lelg` used in `mkSIZE`, enabling more flexible CI test.

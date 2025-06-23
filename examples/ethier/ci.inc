@@ -413,8 +413,8 @@ void ciSetup(MPI_Comm comm, setupAide &options)
 
   if (ciMode == 30) { // both scalars, no dealiasing, explicit filter
     options.setArgs("ADVECTION TYPE", "CONVECTIVE");
-    options.setArgs("SCALAR00 REGULARIZATION METHOD", "EXPLICIT FILTER");
-    options.setArgs("SCALAR01 REGULARIZATION METHOD", "EXPLICIT FILTER");
+    options.setArgs("SCALAR00 REGULARIZATION METHOD", "EXPLICIT");
+    options.setArgs("SCALAR01 REGULARIZATION METHOD", "EXPLICIT");
     options.setArgs("SCALAR00 EXPLICIT FILTER MODES", "1");
     options.setArgs("SCALAR01 EXPLICIT FILTER MODES", "1");
     options.setArgs("SCALAR00 EXPLICIT FILTER STRENGTH", "0.001");
@@ -986,6 +986,41 @@ void ciTestDistance(nrs_t *nrs)
     }
     CiFailTest();
   }
+}
+
+void ciTestExplicitFilter(nrs_t *nrs)
+{
+  auto mesh = nrs->mesh;
+  auto o_fld = platform->deviceMemoryPool.reserve<dfloat>(mesh->Nlocal);
+  {
+    std::vector<dfloat> fld(mesh->Nlocal);
+    auto [x, y, z] = mesh->xyzHost();
+    for (int i = 0; i < mesh->Nlocal; i++) {
+      const dfloat arg = x[i] * y[i] + z[i] * z[i];
+      fld[i] = exp(sin(M_PI * arg));
+    }
+    o_fld.copyFrom(fld.data(), mesh->Nlocal);
+  }
+
+  dfloat energy0 = platform->linAlg->weightedNorm2(mesh->Nlocal, mesh->o_LMM, o_fld, platform->comm.mpiComm) / mesh->volume;
+  if(platform->comm.mpiRank == 0){
+    printf("ciTestExplicitFilter (N=%d, ifiltered=%d) energy: %.6e\n", mesh->N, 0, energy0);
+  }
+
+  dfloat energy1, energy;
+  for (int i = 0; i < 20; i++) {
+    nrs->applyExplicitFilter("usr", mesh, o_fld, 4, 0.9);
+
+    energy1 = energy;
+    energy = platform->linAlg->weightedNorm2(mesh->Nlocal, mesh->o_LMM, o_fld, platform->comm.mpiComm) / mesh->volume;
+
+    if(platform->comm.mpiRank == 0){
+      printf("ciTestExplicitFilter (N=%d, ifiltered=%d) energy: %.6e\n", mesh->N, i+1, energy);
+    }
+  }
+
+  CiEvalTest("explicitFilter energy decay", energy < energy0 && energy > 0.9 * energy);
+  CiEvalTest("explicitFilter energy flat", abs(energy - energy1) < 1e-6);
 }
 
 dfloat sumRef(dfloat const *const array, const int size, MPI_Comm comm)

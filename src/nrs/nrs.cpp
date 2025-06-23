@@ -106,7 +106,9 @@ static void assignKernels(nrs_t *nrs)
     nrs->filterRTKernel = platform->kernelRequests.load("core-" + kernelName);
 
     kernelName = "vectorExplicitFilter" + suffix;
-    nrs->explicitFilterKernel = platform->kernelRequests.load("core-" + kernelName);
+    nrs->vectorExplicitFilterKernel = platform->kernelRequests.load("core-" + kernelName);
+    kernelName = "explicitFilter" + suffix;
+    nrs->scalarExplicitFilterKernel = platform->kernelRequests.load("core-" + kernelName);
 
     kernelName = "sumMakef";
     nrs->sumMakefKernel = platform->kernelRequests.load(section + kernelName);
@@ -831,6 +833,7 @@ void nrs_t::init()
     cfg.alpha0Ref = &this->alpha0Ref;
 
     this->cds = new cds_t(cfg);
+    this->cds->explicitFilterKernel = this->scalarExplicitFilterKernel;
 
     this->qqtT = this->cds->qqtT;
 

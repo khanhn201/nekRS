@@ -77,7 +77,7 @@ c-----------------------------------------------------------------------
       data ncut_save /0/
 
       if (ncut.le.1)
-     $  call exitti('invalid ncut in set_interp_mat$',set_interp_mat)
+     $  call exitti('invalid ncut in set_interp_mat$',ncut)
 
       if (ncut.ne.ncut_save) then
 

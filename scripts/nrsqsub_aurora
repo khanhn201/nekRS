@@ -1,8 +1,6 @@
 #!/bin/bash
 set -e
 
-# PROJ_ID=
-
 #--------------------------------------
 : ${QUEUE:="prod"}
 : ${NEKRS_GPU_MPI:=0}
@@ -47,7 +45,8 @@ echo "echo Running on nodes \`cat \$PBS_NODEFILE\`" >>$SFILE
 
 echo "module load cmake" >> $SFILE
 if [ $USE_ASCENT -eq 1 ]; then
-echo "module load ascent/develop/2025-03-19-c1f63e7-openmp" >> $SFILE
+  echo "module use /soft/modulefiles/" >> $SFILE
+  echo "module load ascent/develop/2025-03-19-c1f63e7-openmp" >> $SFILE
 fi
 echo "module list" >> $SFILE
 

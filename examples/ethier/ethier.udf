@@ -493,6 +493,10 @@ void UDF_ExecuteStep(double time, int tstep)
     ciCheckpointing(nrs);
   }
 
+  if (tstep == 0 && ciMode == 30) {
+    ciTestExplicitFilter(nrs);
+  }
+
   // only ciMode 1 exercises the particles path
   if (ciMode == 1) {
     particles->integrate(time);

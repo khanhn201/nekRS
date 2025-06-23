@@ -1,8 +1,22 @@
 #include "platform.hpp"
 #include "lowPassFilter.hpp"
+#include "nrs.hpp"
 
 namespace
 {
+
+struct userFilterContainer
+{
+  std::string tag;
+  int Nc = -1;
+  dfloat wght = 0.0;
+  occa::memory o_filterRT;
+
+  bool setupCalled = false;
+};
+
+std::map<std::string, userFilterContainer> filterMap;
+
 double filterFactorial(int n)
 {
   if (n == 0) {
@@ -318,4 +332,51 @@ occa::memory explicitFilterSetup(std::string tag,
   free(A);
   free(V);
   return o_A;
+}
+
+void  nrs_t::applyExplicitFilter(std::string tag, mesh_t *mesh, occa::memory &o_fld,
+                                 const int filterNc, const dfloat filterWght)
+{
+  userFilterContainer *m = &filterMap[tag];
+
+  if (!m->setupCalled) {
+    m->Nc = filterNc;
+    m->wght = filterWght;
+    m->o_filterRT = explicitFilterSetup(tag, mesh, m->Nc, m->wght);
+    m->setupCalled = true;
+  } else {
+    nekrsCheck(m->Nc != filterNc,
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "explicitFilter %s attempt to use a differnt Nc=%d than setup Nc=%d!\n",
+               tag.c_str(), filterNc, m->Nc);
+    nekrsCheck(abs(m->wght - filterWght) > 1e-6,
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "explicitFilter %s attempt to use a differnt wght=%g than setup wght=%g!\n",
+               tag.c_str(), filterWght, m->wght);
+  }
+
+  static bool firstCall = true;
+  static occa::memory o_offsetScan;
+  static occa::memory o_applyFilter;
+
+  if (firstCall) { // set up dummy scalar arrays
+    std::vector<dlong> offsetScan = {0};
+    o_offsetScan = platform->device.malloc<dlong>(1);
+    o_offsetScan.copyFrom(offsetScan.data());
+
+    std::vector<dlong> applyFilter = {1};
+    o_applyFilter = platform->device.malloc<dlong>(1);
+    o_applyFilter.copyFrom(applyFilter.data());
+    firstCall = false;
+  }
+
+  this->scalarExplicitFilterKernel(mesh->Nelements,
+                                   0, // start idx
+                                   1, // nfld
+                                   o_offsetScan,
+                                   o_applyFilter,
+                                   m->o_filterRT,
+                                   o_fld);
 }

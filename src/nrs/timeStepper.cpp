@@ -503,9 +503,9 @@ void nrs_t::initInnerStep(double time, dfloat _dt, int tstep)
 
 void nrs_t::applyExplicitFilter()
 {
-  if (platform->options.compareArgs("VELOCITY REGULARIZATION METHOD", "EXPLICIT FILTER")) {
+  if (platform->options.compareArgs("VELOCITY REGULARIZATION METHOD", "EXPLICIT")) {
     auto mesh = this->mesh;
-    this->explicitFilterKernel(mesh->Nelements, this->o_filterRT, this->fieldOffset, this->o_U);
+    this->vectorExplicitFilterKernel(mesh->Nelements, this->o_filterRT, this->fieldOffset, this->o_U);
     double flops = 24 * mesh->Np * mesh->Nq + 3 * mesh->Np;
     flops *= static_cast<double>(mesh->Nelements);
     platform->flopCounter->add("velocityExplicitFilter", flops);
@@ -519,12 +519,12 @@ void nrs_t::applyExplicitFilter()
       }
       std::string sid = scalarDigitStr(is);
 
-      if (platform->options.compareArgs("SCALAR" + sid + " REGULARIZATION METHOD", "EXPLICIT FILTER")) {
+      if (platform->options.compareArgs("SCALAR" + sid + " REGULARIZATION METHOD", "EXPLICIT")) {
         auto mesh = (cht) ? cds->mesh[0] : this->mesh;
         cds->explicitFilterKernel(mesh->Nelements,
                                   is,
                                   1,
-                                  cds->fieldOffsetScan,
+                                  cds->o_fieldOffsetScan,
                                   cds->o_applyFilterRT,
                                   cds->o_filterRT,
                                   cds->o_S);

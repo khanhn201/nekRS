@@ -295,14 +295,18 @@ void setup(mesh_t *mesh_,
   const auto tStart = MPI_Wtime();
   if (platform->comm.mpiRank == 0) {
     printf("initializing nekAscent ");
-    if (interpolate || uniform) {
-      printf("(Nviz=%d", Nin);
-      if (uniform) {
-        printf(" +uniform");
-      }
-      printf(") ...\n");
-      fflush(stdout);
+    printf("(Nviz=%d", Nin);
+    if (uniform) {
+      printf(" +uniform");
     }
+    if (stageThroughHost){
+      printf(" +viaHost");
+    }
+    if (async){
+      printf(" +async");
+    }
+    printf(") ...\n");
+    fflush(stdout);
   }
 
   if (platform->comm.mpiRank == 0) {

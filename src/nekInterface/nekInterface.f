@@ -263,6 +263,7 @@ c-----------------------------------------------------------------------
       etime1 = dnekclock_sync()
       do iref=1,refineSize
         call usrdat2_oct(refine(iref))
+        call fix_geom
       enddo
 
       call usrdat2

@@ -274,9 +274,9 @@ void setup(mesh_t *mesh_,
     stageThroughHost = false;
   }
 
-  if (stageThroughHost) {
-    async = true;
-  }
+//  if (stageThroughHost) {
+//    async = true;
+//  }
 
   if (async) {
     int provided;

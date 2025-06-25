@@ -589,15 +589,6 @@ c      implicit none
       enddo
       nblk_total = ncut_total**ldim
 
-      ierr = 0
-      if (nelr*nblk_total.ne.nelt) ierr = 1
-      ierr = iglsum(ierr,1)
-      if (ierr.ne.0) then
-        if (nio.eq.0) write(*,12) nid,nelr,nelt,nblk_total
-        call exitt
-      endif
- 12   format(1X,'nekf_refine_readfld nel mismstched',3I12)
-
       if (np.gt.1) then
         nelt0 = nelt
         do iref=refineSize,1,-1 ! reverse copy

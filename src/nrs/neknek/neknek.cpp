@@ -277,7 +277,15 @@ void neknek_t::setup()
     }
   }
 
+  if (platform->comm.mpiRank == 0) {
+    printf("finding int points\n");
+    std::fflush(stdout);
+  }
   this->findIntPoints();
+  if (platform->comm.mpiRank == 0) {
+    printf("done finding int points\n");
+    std::fflush(stdout);
+  }
 
   if (platform->comm.mpiRank == 0) {
     std::cout << "exchanged fields: ";

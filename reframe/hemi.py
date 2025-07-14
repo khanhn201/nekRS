@@ -13,7 +13,7 @@ class NekRSHemiCase(NekRSCase):
 
 @rfm.simple_test
 class NekRSHemiTest(NekRSTest):
-  num_nodes = variable(int, value=8)
+  num_nodes = variable(int, value=4)
   maximum_walltime = '01:00:00'
   # time_steps = 8000
 

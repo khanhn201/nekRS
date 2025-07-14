@@ -5,8 +5,9 @@ from reframe.core.backends import getlauncher
 
 import alcf_nodes as alcf
 import os.path 
+import os
 
-class NekRSBuild(alcf.ALCFCompileOnlyTest):
+class NekRSBuild(rfm.CompileOnlyRegressionTest):
     
   use_prebuilt = variable(typ.Bool, value=True)
   version = variable(str, value='2024-11-22')
@@ -16,29 +17,30 @@ class NekRSBuild(alcf.ALCFCompileOnlyTest):
     self.descr = 'nekRS build'
     self.maintainers = []
     self.tags = {'nekrs'}
-    self.modules = ['cmake']
+    # self.modules = ['cmake']
+    self.valid_systems = ['local']
+    # self.valid_prog_environs = ['local']
 
   # Need stagedir, so must call after setup phase
   # https://reframe-hpc.readthedocs.io/en/stable/regression_test_api.html#reframe.core.pipeline.RegressionTest.stagedir
   @run_before('compile')
   def configure_build(self):
     if self.use_prebuilt:
-      tarball_prefix = '/lus/flare/projects/Aurora_AT/test_binary_tarballs'
-      tarball = f'nekRS_{self.version}_binary.tar.gz'
-      tarball_path = os.path.join(tarball_prefix,tarball)
+      # tarball_prefix = '/lus/flare/projects/Aurora_AT/test_binary_tarballs'
+      # tarball = f'nekRS_{self.version}_binary.tar.gz'
+      # tarball_path = os.path.join(tarball_prefix,tarball)
       self.build_system = 'CustomBuild'
       self.build_system.commands = ['/bin/true']
-      self.prebuild_cmds = [f'tar xzf {tarball_path}']
-      self.install_path = os.path.join(f'{self.stagedir}','nekRS/install')
+      self.prebuild_cmds = [f'cp -r /home/nekoconn/code/seal/reframe-test/install ./']
+      
+      self.install_path = os.path.join(f'{self.stagedir}','install')
       self.binary_path = os.path.join(self.install_path,'bin')
     else:
-      self.sourcesdir = 'https://github.com/argonne-lcf/nekRS.git'
+      self.sourcesdir = '../'
       self.build_system = 'CMake'
-      self.build_system.flags_from_environ = False
+            
+      self.build_system.flags_from_environ = True
       self.build_system.builddir = 'build'
-      self.build_system.cc = 'mpicc'
-      self.build_system.cxx = 'mpicxx'
-      self.build_system.ftn = 'mpif77'
       self.build_system.max_concurrency = 8
       self.build_system.make_opts = ['install']
       self.install_path = os.path.join(f'{self.stagedir}','install')
@@ -47,6 +49,7 @@ class NekRSBuild(alcf.ALCFCompileOnlyTest):
         f'-DCMAKE_INSTALL_PREFIX={self.install_path}',
       ]
       
+            
   @sanity_function
   def validate_build(self):
     nekrs_binary = os.path.join(self.binary_path,'nekrs')
@@ -65,7 +68,7 @@ class NekRSCase:
   @property
   def directory(self): return self._directory
 
-class NekRSTest(alcf.ALCFRunOnlyTest):
+class NekRSTest(rfm.RunOnlyRegressionTest):
 
   nekrs_build = fixture(NekRSBuild, scope='environment')
 
@@ -74,15 +77,21 @@ class NekRSTest(alcf.ALCFRunOnlyTest):
     self.descr = 'nekRS test'
     self.maintainers = []
     self.tags = {'nekrs'}
-    self.valid_systems = ['sunspot:compute','aurora:compute']
-    self.valid_prog_environs = ['PrgEnv-intel']
+    self.valid_systems = ['*']
+    self.valid_prog_environs = ['*']
     self.modules = ['cmake']
     self.case = nekrs_case
     self.sourcesdir = nekrs_case.directory
     self.readonly_files = [ f'{nekrs_case.name}.re2' ]
     self.device_id = 0
-    self.cpu_bind = r'list:0-7:8-15:16-23:24-31:32-39:40-47:52-59:60-67:68-75:76-83:84-91:92-99'
-    self.ranks_per_node = 12
+    self.num_nodes = nekrs_case.num_nodes
+
+  @run_after('setup')
+  def read_partition_vars(self):
+    vars = self.current_environ.env_vars
+    self.backend = vars.get('NEKRS_BACKEND', 'serial')
+    self.ranks_per_node = int(vars.get('NEKRS_RANKS_PER_NODE', '1'))
+    self.cpu_bind = vars.get('NEKRS_CPU_BIND', '')
 
   # Need fixture variables, so must call after setup
   # See _Early access to fixture objects_ here: 
@@ -92,26 +101,28 @@ class NekRSTest(alcf.ALCFRunOnlyTest):
     self.nekrs_home = os.path.realpath(self.nekrs_build.install_path)
     self.nekrs_binary = os.path.join(self.nekrs_build.binary_path,'nekrs')
     self.executable = f'gpu_tile_compact.sh {self.nekrs_binary}'
+    self.executable = f'{self.nekrs_binary}'
 
   def set_environment(self):
     self.env_vars |= {
       'LD_LIBRARY_PATH' : f'$LD_LIBRARY_PATH:{self.nekrs_build.install_path}/lib',
-      'NEKRS_HOME' : self.nekrs_home,
-      'OCCA_DPCPP_COMPILER_FLAGS' : '\"-O3 -fsycl -fsycl-targets=intel_gpu_pvc -ftarget-register-alloc-mode=pvc:auto -fma\"'
+      'NEKRS_HOME' : self.nekrs_home
+      # 'OCCA_DPCPP_COMPILER_FLAGS' : '\"-O3 -fsycl -fsycl-targets=intel_gpu_pvc -ftarget-register-alloc-mode=pvc:auto -fma\"'
     }
        
   def set_launcher_options(self):
-    self.total_ranks = self.num_nodes * self.ranks_per_node
-    self.job.launcher.options += [
-      f'-np {self.total_ranks}',
-      f'-ppn {self.ranks_per_node}',
-      f'--cpu-bind={self.cpu_bind}'
-    ]
+    self.num_tasks = self.num_nodes * self.ranks_per_node
+    self.num_tasks_per_node = self.ranks_per_node
+    # self.job.launcher.options += [
+    #   # f'-np {self.total_ranks}',
+    #   # f'-ppn {self.ranks_per_node}',
+    #   # f'--cpu-bind={self.cpu_bind}'
+    # ]
 
   def set_executable_options(self):
     self.executable_opts += [
       f'--setup {self.case.name}',
-      f'--backend DPCPP',
+      f'--backend {self.backend}',
       f'--device-id {self.device_id}'
     ]
 

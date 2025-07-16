@@ -17,8 +17,8 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
     self.descr = 'nekRS build'
     self.maintainers = []
     self.tags = {'nekrs'}
-    # self.modules = ['cmake']
-    self.valid_systems = ['local']
+    self.modules = ['cmake']
+    self.valid_systems = ['*']
     # self.valid_prog_environs = ['local']
 
   # Need stagedir, so must call after setup phase
@@ -26,12 +26,11 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
   @run_before('compile')
   def configure_build(self):
     if self.use_prebuilt:
-      # tarball_prefix = '/lus/flare/projects/Aurora_AT/test_binary_tarballs'
-      # tarball = f'nekRS_{self.version}_binary.tar.gz'
-      # tarball_path = os.path.join(tarball_prefix,tarball)
+      vars = self.current_environ.env_vars
+      prebuilt_dir = vars.get('NEKRS_PREBUILT_DIR', '')
       self.build_system = 'CustomBuild'
       self.build_system.commands = ['/bin/true']
-      self.prebuild_cmds = [f'cp -r /home/nekoconn/code/seal/reframe-test/install ./']
+      self.prebuild_cmds = [f'cp -r {prebuilt_dir} ./']
       
       self.install_path = os.path.join(f'{self.stagedir}','install')
       self.binary_path = os.path.join(self.install_path,'bin')
@@ -85,6 +84,13 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.readonly_files = [ f'{nekrs_case.name}.re2' ]
     self.device_id = 0
     self.num_nodes = nekrs_case.num_nodes
+    self.extra_resources = {
+        'account': {'account': 'EnergyApps'},
+        'walltime': {'walltime': '01:00:00'},
+        'queue': {'queue': 'debug'},
+        'filesystem': {'filesystem': 'home:flare'},
+        'nodes': {'nodes': self.num_nodes}
+    }
 
   @run_after('setup')
   def read_partition_vars(self):
@@ -113,11 +119,10 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
   def set_launcher_options(self):
     self.num_tasks = self.num_nodes * self.ranks_per_node
     self.num_tasks_per_node = self.ranks_per_node
-    # self.job.launcher.options += [
-    #   # f'-np {self.total_ranks}',
-    #   # f'-ppn {self.ranks_per_node}',
-    #   # f'--cpu-bind={self.cpu_bind}'
-    # ]
+    self.job.launcher.options += [
+      f'-ppn {self.ranks_per_node}',
+      f'--cpu-bind={self.cpu_bind}'
+    ]
 
   def set_executable_options(self):
     self.executable_opts += [

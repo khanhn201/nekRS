@@ -3,13 +3,16 @@ site_configuration = {
         {
             'name': 'local',
             'hostnames': ['AZKi'],
+            'env_vars': [
+                ['NEKRS_PREBUILT_DIR', '/home/nekoconn/code/seal/reframe-test/install']
+            ],
             'partitions': [
                 {
                     'name': 'default',
                     'descr': 'Default partition',
                     'scheduler': 'local',
                     'launcher': 'mpirun',
-                    'environs': ['local']
+                    'environs': ['local'],
                 }
             ]
         }

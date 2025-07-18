@@ -169,6 +169,103 @@ void pointInterpolation_t::find(pointInterpolation_t::VerbosityLevel verbosity, 
   data_.updateCache = true;
 }
 
+void pointInterpolation_t::findAndEvalBatch(dlong nFields,
+                                            dlong inputFieldOffset,
+                                            const occa::memory &o_in,
+                                            dlong outputFieldOffset,
+                                            occa::memory &o_out,
+                                            int batchCount,
+                                            bool matchSession,
+                                            dlong nPointsIn,
+                                            dlong offset)
+{
+  if (timerLevel != TimerLevel::None) {
+    platform->timer.tic("pointInterpolation_t::find");
+  }
+
+  int iErr = 0;
+  iErr += !pointsAdded;
+  nekrsCheck(iErr, platform->comm.mpiComm, EXIT_FAILURE, "%s\n", "find called without any points added!");
+
+  const auto n = nPoints;
+  const dlong sessionIDMatch = matchSession;
+
+  const dlong patchSize = n/batchCount + 1;
+
+  for (int b = 0; b < batchCount; ++b) {
+    const dlong i = b * patchSize;
+    dlong count = 0;
+    if (i < n) {
+      count = std::min(patchSize, n - i);
+    }
+
+    data_ = findpts::data_t(count);
+    if (useHostPoints) {
+      findpts_->find(&data_, &_x[i], &_y[i], &_z[i], &_session[i], sessionIDMatch, count);
+    } else {
+      occa::memory o_x_slice = _o_x.slice(i);
+      occa::memory o_y_slice = _o_y.slice(i);
+      occa::memory o_z_slice = _o_z.slice(i);
+      occa::memory o_session_slice = _o_session.slice(i);
+      findpts_->find(&data_,
+                     o_x_slice,
+                     o_y_slice,
+                     o_z_slice,
+                     o_session_slice,
+                     sessionIDMatch,
+                     count);
+    }
+    data_.updateCache = true;
+    if (inputFieldOffset == 0) {
+      inputFieldOffset = o_in.size();
+    }
+    if (outputFieldOffset == 0) {
+      outputFieldOffset = o_out.size();
+    }
+
+    auto nPoints_ = count;
+
+    nekrsCheck(nFields > 1 && mesh->Nlocal > inputFieldOffset,
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "pointInterpolation_t::eval inputFieldOffset (%d) is less than mesh->Nlocal (%d)\n",
+               inputFieldOffset,
+               mesh->Nlocal);
+
+    nekrsCheck(nFields > 1 && nPoints_ > outputFieldOffset,
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "pointInterpolation_t::eval outputFieldOffset (%d) is less than nPoints (%d)\n",
+               inputFieldOffset,
+               nPoints_);
+
+    nekrsCheck(o_in.byte_size() < nFields * inputFieldOffset * sizeof(dfloat),
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "pointInterpolation_t::eval input size (%" PRId64 ") is smaller than expected (%ld)\n",
+               o_in.byte_size(),
+               nFields * inputFieldOffset * sizeof(dfloat));
+
+    nekrsCheck(o_out.byte_size() < nFields * outputFieldOffset * sizeof(dfloat),
+               MPI_COMM_SELF,
+               EXIT_FAILURE,
+               "pointInterpolation_t::eval output size (%" PRId64 ") is smaller than expected (%ld)\n",
+               o_out.byte_size(),
+               nFields * outputFieldOffset * sizeof(dfloat));
+
+    if (timerLevel != TimerLevel::None) {
+      platform->timer.tic("pointInterpolation_t::eval");
+    }
+    occa::memory o_out_slice = o_out.slice(i);
+    findpts_->eval(nPoints_, offset, nFields, inputFieldOffset, outputFieldOffset, o_in, &data_, o_out_slice);
+
+    if (timerLevel != TimerLevel::None) {
+      platform->timer.toc("pointInterpolation_t::eval");
+    }
+  }
+
+}
+
 void pointInterpolation_t::eval(dlong nFields,
                                 dlong inputFieldOffset,
                                 const occa::memory &o_in,

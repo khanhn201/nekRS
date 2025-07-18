@@ -106,8 +106,10 @@ void neknek_t::updateInterpPoints(double time)
 
   this->interpolator->setPoints(this->o_x_, this->o_y_, this->o_z_, this->o_session_);
 
-  const auto verboseLevel = pointInterpolation_t::VerbosityLevel::Detailed;
-  this->interpolator->find(verboseLevel);
+  if (!batchCount_) {
+    const auto verboseLevel = pointInterpolation_t::VerbosityLevel::Detailed;
+    this->interpolator->find(verboseLevel);
+  }
 }
 
 void neknek_t::findIntPoints()
@@ -173,9 +175,10 @@ void neknek_t::findIntPoints()
 
   this->interpolator->setPoints(neknekX, neknekY, neknekZ, session);
 
-  const auto verboseLevel = pointInterpolation_t::VerbosityLevel::Detailed;
-  this->interpolator->find(verboseLevel);
-
+  if (!batchCount_) {
+    const auto verboseLevel = pointInterpolation_t::VerbosityLevel::Detailed;
+    this->interpolator->find(verboseLevel);
+  }
   this->o_x_ = platform->device.malloc<dfloat>(this->npt_);
   this->o_x_.copyFrom(neknekX.data());
   this->o_y_ = platform->device.malloc<dfloat>(this->npt_);
@@ -188,6 +191,7 @@ void neknek_t::findIntPoints()
 
 void neknek_t::setup()
 {
+  platform->par->extract("neknek", "findptsBatchCount", batchCount_);
   dlong globalRank;
   MPI_Comm_rank(platform->comm.mpiCommParent, &globalRank);
 
@@ -527,11 +531,19 @@ void neknek_t::exchange(double time, bool allTimeStates, bool lagState)
   platform->timer.tic("neknek exchange");
 
   if (std::find(this->fields.begin(), this->fields.end(), "velocity") != this->fields.end()) {
-    this->interpolator->eval(nStates * nrs->NVfields,
-                             nrs->fieldOffset,
-                             nrs->o_U,
-                             this->fieldOffset_,
-                             this->o_U_);
+    if (batchCount_) {
+      this->interpolator->findAndEvalBatch(nStates * nrs->NVfields,
+                                           nrs->fieldOffset,
+                                           nrs->o_U,
+                                           this->fieldOffset_,
+                                           this->o_U_, batchCount_);
+    } else {
+      this->interpolator->eval(nStates * nrs->NVfields,
+                               nrs->fieldOffset,
+                               nrs->o_U,
+                               this->fieldOffset_,
+                               this->o_U_);
+    }
   }
 
   if (this->Nscalar_) {
@@ -547,7 +559,11 @@ void neknek_t::exchange(double time, bool allTimeStates, bool lagState)
                             nrs->cds->o_S,
                             o_S);
     }
-    this->interpolator->eval(nStates * this->Nscalar_, nrs->fieldOffset, o_S, this->fieldOffset_, this->o_S_);
+    if (batchCount_) {
+      this->interpolator->findAndEvalBatch(nStates * this->Nscalar_, nrs->fieldOffset, o_S, this->fieldOffset_, this->o_S_, batchCount_);
+    } else {
+      this->interpolator->eval(nStates * this->Nscalar_, nrs->fieldOffset, o_S, this->fieldOffset_, this->o_S_);
+    }
   }
 
   platform->timer.toc("neknek exchange");

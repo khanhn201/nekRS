@@ -220,6 +220,7 @@ private:
 
   static constexpr int maxOrd = 3;
   bool predictorStep = false;
+  int batchCount_ = 0;
 
   TimerLevel findptsTimerLevel = TimerLevel::Basic;
 };

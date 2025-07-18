@@ -38,6 +38,16 @@ public:
             dlong nPoints = -1,
             dlong findPtsOffset = 0);
 
+void findAndEvalBatch(dlong nFields,
+                      dlong inputFieldOffset,
+                      const occa::memory &o_in,
+                      dlong outputFieldOffset,
+                      occa::memory &o_out,
+                      int batchCount,
+                      bool matchSession = false,
+                      dlong nPoints = -1,
+                      dlong findPtsOffset = 0);
+
   auto *ptr()
   {
     return findpts_.get();

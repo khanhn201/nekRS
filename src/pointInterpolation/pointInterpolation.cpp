@@ -179,10 +179,6 @@ void pointInterpolation_t::findAndEvalBatch(dlong nFields,
                                             dlong nPointsIn,
                                             dlong offset)
 {
-  if (timerLevel != TimerLevel::None) {
-    platform->timer.tic("pointInterpolation_t::find");
-  }
-
   int iErr = 0;
   iErr += !pointsAdded;
   nekrsCheck(iErr, platform->comm.mpiComm, EXIT_FAILURE, "%s\n", "find called without any points added!");

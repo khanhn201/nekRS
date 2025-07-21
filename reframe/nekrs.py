@@ -8,9 +8,7 @@ import os.path
 import os
 
 class NekRSBuild(rfm.CompileOnlyRegressionTest):
-    
   use_prebuilt = variable(typ.Bool, value=True)
-  version = variable(str, value='2024-11-22')
 
   def __init__(self):
     super().__init__()
@@ -26,8 +24,7 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
   @run_before('compile')
   def configure_build(self):
     if self.use_prebuilt:
-      vars = self.current_environ.env_vars
-      prebuilt_dir = vars.get('NEKRS_PREBUILT_DIR', '')
+      prebuilt_dir = self.current_environ.extras.get('prebuilt_dir', '')
       self.build_system = 'CustomBuild'
       self.build_system.commands = ['/bin/true']
       self.prebuild_cmds = [f'cp -r {prebuilt_dir} ./']
@@ -84,6 +81,7 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.readonly_files = [ f'{nekrs_case.name}.re2' ]
     self.device_id = 0
     self.num_nodes = nekrs_case.num_nodes
+    self.ci_mode = nekrs_case.ci_mode
     self.extra_resources = {
         'account': {'account': 'EnergyApps'},
         'walltime': {'walltime': '01:00:00'},
@@ -94,10 +92,9 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
 
   @run_after('setup')
   def read_partition_vars(self):
-    vars = self.current_environ.env_vars
-    self.backend = vars.get('NEKRS_BACKEND', 'serial')
-    self.ranks_per_node = int(vars.get('NEKRS_RANKS_PER_NODE', '1'))
-    self.cpu_bind = vars.get('NEKRS_CPU_BIND', '')
+    self.backend = self.current_environ.extras.get('backend', 'serial')
+    self.ranks_per_node = self.current_environ.extras.get('ranks_per_node', 1)
+    self.cpu_bind = self.current_environ.extras.get('cpu_bind', '')
 
   # Need fixture variables, so must call after setup
   # See _Early access to fixture objects_ here: 
@@ -119,16 +116,18 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
   def set_launcher_options(self):
     self.num_tasks = self.num_nodes * self.ranks_per_node
     self.num_tasks_per_node = self.ranks_per_node
-    self.job.launcher.options += [
-      f'-ppn {self.ranks_per_node}',
-      f'--cpu-bind={self.cpu_bind}'
-    ]
+    if self.cpu_bind != '':
+      self.job.launcher.options += [
+        f'-ppn {self.ranks_per_node}',
+        f'--cpu-bind={self.cpu_bind}'
+      ]
 
   def set_executable_options(self):
     self.executable_opts += [
       f'--setup {self.case.name}',
       f'--backend {self.backend}',
-      f'--device-id {self.device_id}'
+      f'--device-id {self.device_id}',
+      f'--cimode {self.ci_mode}'
     ]
 
   @run_before('run')

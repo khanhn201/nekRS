@@ -49,11 +49,13 @@ site_configuration = {
                 ['CC', 'mpicc'],
                 ['CXX', 'mpic++'],
                 ['FC', 'mpif77'],
-                ['NEKRS_BACKEND', 'dpcpp'],
-                ['NEKRS_RANKS_PER_NODE', '12'],
-                ['NEKRS_CPU_BIND', 'list:0-7:8-15:16-23:24-31:32-39:40-47:52-59:60-67:68-75:76-83:84-91:92-99'],
-                ['NEKRS_PREBUILT_DIR', '/lus/flare/projects/pe-summer-2025/khanhn/reframe-test/install']
-            ]
+            ],
+            'extras': {
+                'prebuilt_dir': '/lus/flare/projects/pe-summer-2025/khanhn/reframe-test/install',
+                'cpu_bind': 'list:0-7:8-15:16-23:24-31:32-39:40-47:52-59:60-67:68-75:76-83:84-91:92-99',
+                'ranks_per_node': 12,
+                'backend': 'dpcpp',
+            }
         }
     ]
 }

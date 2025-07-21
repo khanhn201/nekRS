@@ -3,9 +3,7 @@ site_configuration = {
         {
             'name': 'local',
             'hostnames': ['AZKi'],
-            'env_vars': [
-                ['NEKRS_PREBUILT_DIR', '/home/nekoconn/code/seal/reframe-test/install']
-            ],
+            'prefix': '/home/nekoconn/code/seal/reframe-test/',
             'partitions': [
                 {
                     'name': 'default',
@@ -32,10 +30,13 @@ site_configuration = {
                 ['OMPI_CC',  'gcc-13'],
                 ['OMPI_FC',  'gfortran-13'],
                 ['CUDAHOSTCXX', 'g++-13'],
-                ['NEKRS_BACKEND', 'serial'],
-                ['NEKRS_RANKS_PER_NODE', '1'],
-                ['NEKRS_CPU_BIND', '']
-            ]
+            ],
+            'extras': {
+                'prebuilt_dir': '/home/nekoconn/code/seal/reframe-test/install',
+                'cpu_bind': '',
+                'ranks_per_node': 1,
+                'backend': 'serial',
+            }
         }
     ]
 }

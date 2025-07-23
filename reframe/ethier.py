@@ -1,6 +1,6 @@
 import reframe as rfm
 import reframe.utility.sanity as sn
-from nekrs import NekRSCase, NekRSTest
+from nekrs import NekRSCase, NekRSTest, NekRSTestBuildOnly
 
 class NekRSEthierCase(NekRSCase):
   case_name = 'ethier'
@@ -13,22 +13,23 @@ class NekRSEthierCase(NekRSCase):
     self.ci_mode = ci_mode
     super().__init__(name=f'{self.case_name}', directory=f'{self.case_root}/{self.case_name}')
 
-@rfm.simple_test
-class NekRSEthierTest(NekRSTest):
+class NekRSEthierTestBuildOnly(NekRSTestBuildOnly):
   num_nodes = variable(int, value=2)
-  ci_mode = parameter(list(range(1, 31)))
-  maximum_walltime = '01:00:00'
-  # time_steps = 8000
-
+  ci_mode = variable(int, value=1)
   def __init__(self):
     super().__init__(nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode))
 
-  # @run_after('setup')
-  # def set_run_parameters(self):
-  #   self.set_walltime(self.maximum_walltime)
+@rfm.simple_test
+class NekRSEthierTest(NekRSTest):
+  num_nodes = variable(int, value=2)
+  ci_mode = parameter([1, 2, 4, 7, 8, 9, 10, 11, 12])
+  maximum_walltime = '01:00:00'
+  case_build = fixture(NekRSEthierTestBuildOnly, scope='environment')
+    
+  def __init__(self):
+    nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode)
+    super().__init__(nekrs_case)
 
-  @performance_function('fom')
-  def calculate_fom(self):
-    solve_times = sn.extractall(r'solve\s+(\S+)s', self.stdout, 1, float)
-    fom = 1.0 / solve_times[-1]
-    return fom
+  @run_after('setup')
+  def change_sourcedir(self):
+    self.sourcesdir = self.case_build.stagedir

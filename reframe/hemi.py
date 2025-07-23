@@ -24,8 +24,3 @@ class NekRSHemiTest(NekRSTest):
   # def set_run_parameters(self):
   #   self.set_walltime(self.maximum_walltime)
 
-  @performance_function('fom')
-  def calculate_fom(self):
-    solve_times = sn.extractall(r'solve\s+(\S+)s', self.stdout, 1, float)
-    fom = 1.0 / solve_times[-1]
-    return fom

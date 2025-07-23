@@ -17,20 +17,12 @@ site_configuration = {
                             'options': ['-A {account}']
                         },
                         {
-                            'name': 'walltime',
-                            'options': ['-l walltime={walltime}']
-                        },
-                        {
                             'name': 'filesystem',
                             'options': ['-l filesystems={filesystem}']
                         },
                         {
                             'name': 'queue',
                             'options': ['-q {queue}']
-                        },
-                        {
-                            'name': 'nodes',
-                            'options': ['-l select={nodes}']
                         }
                     ]
                 }

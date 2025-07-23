@@ -15,10 +15,10 @@ site_configuration = {
             ]
         }
     ],
+    'storage': [{'enable': True}],
     'environments': [
         {
             'name': 'local',
-            'modules': ['cmake'],
             'cc': 'mpicc',
             'cxx': 'mpic++',
             'ftn': 'mpif77',

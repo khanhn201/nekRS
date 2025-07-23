@@ -1,9 +1,9 @@
 import reframe as rfm
 import reframe.utility.sanity as sn
+import reframe.utility.osext as osext
 import reframe.utility.typecheck as typ
 from reframe.core.backends import getlauncher
 
-import alcf_nodes as alcf
 import os.path 
 import os
 
@@ -51,21 +51,24 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
     nekrs_binary = os.path.join(self.binary_path,'nekrs')
     return sn.assert_true(os.path.isfile(nekrs_binary), f'nekRS binary could not be found in path {nekrs_binary}') 
 
-# Encapsulate case-specific info
-class NekRSCase:
 
+
+
+
+class NekRSCase:
   def __init__(self, name, directory):
     self._name = name
     self._directory = directory
-
   @property
   def name(self): return self._name
-
   @property
   def directory(self): return self._directory
 
-class NekRSTest(rfm.RunOnlyRegressionTest):
 
+
+
+
+class NekRSTest(rfm.RunOnlyRegressionTest):
   nekrs_build = fixture(NekRSBuild, scope='environment')
 
   def __init__(self, nekrs_case):
@@ -82,12 +85,12 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.device_id = 0
     self.num_nodes = nekrs_case.num_nodes
     self.ci_mode = nekrs_case.ci_mode
+    self.time_limit = '1h'
     self.extra_resources = {
         'account': {'account': 'EnergyApps'},
-        'walltime': {'walltime': '01:00:00'},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
-        'nodes': {'nodes': self.num_nodes}
+        # 'nodes': {'nodes': self.num_nodes}
     }
 
   @run_after('setup')
@@ -137,6 +140,35 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.set_executable_options()
     # TODO: Add kernel jitting to self.prerun_cmds[]
 
+
   @sanity_function
   def check_exit_code(self):
-    return sn.assert_found(r'finished with exit code 0', self.stdout, msg='finished with non-zero exit code.')
+    stdout = sn.evaluate(self.stdout)
+    last_lines = '\n'.join(osext.tail(stdout, num_lines=5))
+    return sn.assert_found_s(r'finished with exit code 0', last_lines, msg='finished with non-zero exit code.')
+
+  @performance_function('fom')
+  def fom(self):
+    solve_times = sn.extractall(r'solve\s+(\S+)s', self.stdout, 1, float)
+    fom = 1.0 / solve_times[-1]
+    return fom
+
+
+
+
+
+class NekRSTestBuildOnly(NekRSTest):
+  def __init__(self, nekrs_case):
+    super().__init__(nekrs_case)
+
+  def set_executable_options(self):
+    self.executable_opts += [
+      f'--setup {self.case.name}',
+      f'--backend {self.backend}',
+      f'--device-id {self.device_id}',
+      f'--cimode {self.ci_mode}',
+      f'--build-only {self.num_tasks}'
+    ]
+  @performance_function('fom')
+  def fom(self):
+    return 0.0

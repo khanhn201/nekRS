@@ -1,14 +1,12 @@
 import reframe as rfm
 import reframe.utility.sanity as sn
 import reframe.utility.osext as osext
-import reframe.utility.typecheck as typ
-from reframe.core.backends import getlauncher
 
 import os.path 
 import os
 
 class NekRSBuild(rfm.CompileOnlyRegressionTest):
-  use_prebuilt = variable(typ.Bool, value=True)
+  use_prebuilt = variable(bool, value=True)
 
   def __init__(self):
     super().__init__()

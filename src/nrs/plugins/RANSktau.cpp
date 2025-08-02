@@ -443,7 +443,7 @@ void RANSktau::setup(int ifld, std::string &modelIn)
     for (auto &[key, bcID] : bcMap::map()) {
       const auto field = key.first;
       if (field == "velocity") {
-	if (bcID == bcMap::bcTypeW) {
+	if (bcID == bcMap::bcTypeW  || (key.second == 1 && bcID != bcMap::bcTypeO)) {
 	  wbID.push_back(key.second + 1);
 	}
       }

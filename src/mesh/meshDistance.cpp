@@ -42,7 +42,7 @@ hlong hsum(mesh_t *mesh, const dlong N, occa::memory &o_a, MPI_Comm _comm)
 
 // GPU-enabled mechanism of computing distances not yet supported
 occa::memory
-cheapDist(mesh_t *mesh, int nbID, const occa::memory &o_bID, dlong offsetFld, bool minDist, int maxIter)
+cheapDist(mesh_t *mesh, int nbID, const occa::memory &o_bID, dlong offsetFld, bool minDist, int maxIter, const occa::memory &initialDist = nullptr)
 {
   bool verbose = platform->options.compareArgs("VERBOSE", "TRUE");
   const auto [minCoord, maxCoord] = [&]() {
@@ -58,33 +58,39 @@ cheapDist(mesh_t *mesh, int nbID, const occa::memory &o_bID, dlong offsetFld, bo
   }();
 
   const auto Nfields = minDist ? 1 : nbID;
-  auto o_dist = platform->device.malloc<dfloat>(Nfields * offsetFld);
-  platform->linAlg->fill(Nfields * offsetFld, 0.0, o_dist);
+  occa::memory o_dist;
 
-  // as defined in nek5000 cheap_dist
-  const auto largeNum = 10.0 * (maxCoord - minCoord);
-  for (int fld = 0; fld < Nfields; ++fld) {
-    auto o_dist_fld = o_dist + fld * offsetFld;
-    platform->linAlg->fill(mesh->Nlocal, largeNum, o_dist_fld);
-  }
-
-  const auto zero = 0.0;
-
-  if (minDist) {
-    // zero-out distance across all boundaries specified in o_bid
-    mesh->setBIDKernel(mesh->Nelements, 1, 0, nbID, zero, o_bID, 0, mesh->o_vmapM, mesh->o_EToB, o_dist);
+  if (initialDist == nullptr) {
+    o_dist = platform->device.malloc<dfloat>(Nfields * offsetFld);
+    platform->linAlg->fill(Nfields * offsetFld, 0.0, o_dist);
+  
+    // as defined in nek5000 cheap_dist
+    const auto largeNum = 10.0 * (maxCoord - minCoord);
+    for (int fld = 0; fld < Nfields; ++fld) {
+      auto o_dist_fld = o_dist + fld * offsetFld;
+      platform->linAlg->fill(mesh->Nlocal, largeNum, o_dist_fld);
+    }
+  
+    const auto zero = 0.0;
+  
+    if (minDist) {
+      // zero-out distance across all boundaries specified in o_bid
+      mesh->setBIDKernel(mesh->Nelements, 1, 0, nbID, zero, o_bID, 0, mesh->o_vmapM, mesh->o_EToB, o_dist);
+    } else {
+      // zero-out different distance for each boundary specified in o_bid
+      mesh->setBIDKernel(mesh->Nelements,
+                         nbID,
+                         offsetFld,
+                         nbID,
+                         zero,
+                         o_bID,
+                         1,
+                         mesh->o_vmapM,
+                         mesh->o_EToB,
+                         o_dist);
+    }
   } else {
-    // zero-out different distance for each boundary specified in o_bid
-    mesh->setBIDKernel(mesh->Nelements,
-                       nbID,
-                       offsetFld,
-                       nbID,
-                       zero,
-                       o_bID,
-                       1,
-                       mesh->o_vmapM,
-                       mesh->o_EToB,
-                       o_dist);
+    o_dist = platform->device.malloc<dfloat>(Nfields * offsetFld, initialDist);
   }
 
   auto o_changed = platform->deviceMemoryPool.reserve<hlong>(mesh->Nlocal);
@@ -142,13 +148,13 @@ mesh_t::distance(int nbID, const occa::memory &o_bID, dlong offsetFld, std::stri
   return o_dist;
 }
 
-occa::memory mesh_t::minDistance(int nbID, const occa::memory &o_bID, std::string type, int maxIter)
+occa::memory mesh_t::minDistance(int nbID, const occa::memory &o_bID, std::string type, int maxIter, const occa::memory &initialDist)
 {
   lowerCase(type);
 
   occa::memory o_dist;
   if (type.find("cheap") != std::string::npos) {
-    o_dist = cheapDist(this, nbID, o_bID, this->Nlocal, true, maxIter);
+    o_dist = cheapDist(this, nbID, o_bID, this->Nlocal, true, maxIter, initialDist);
   } else {
     nekrsAbort(platform->comm.mpiComm,
                EXIT_FAILURE,
@@ -176,12 +182,12 @@ mesh_t::distance(const std::vector<dlong> &bID, dlong offsetFld, std::string typ
   return dist;
 }
 
-std::vector<dfloat> mesh_t::minDistance(const std::vector<dlong> &bID, std::string type, int maxIter)
+std::vector<dfloat> mesh_t::minDistance(const std::vector<dlong> &bID, std::string type, int maxIter, const occa::memory &initialDist)
 {
   auto o_bid = platform->deviceMemoryPool.reserve<dlong>(bID.size());
   o_bid.copyFrom(bID.data());
 
-  auto o_dist = this->minDistance(bID.size(), o_bid, type, maxIter);
+  auto o_dist = this->minDistance(bID.size(), o_bid, type, maxIter, initialDist);
 
   std::vector<dfloat> dist(this->Nlocal);
   o_dist.copyTo(dist.data(), this->Nlocal);

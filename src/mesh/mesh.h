@@ -52,8 +52,9 @@ struct mesh_t {
 
   // minDistance: compute minimum distance across all boundary ids
   // returns a single distance field
-  occa::memory minDistance(int nbID, const occa::memory &o_bID, std::string type, int maxIter = 10000);
-  std::vector<dfloat> minDistance(const std::vector<dlong> &bID, std::string type, int maxIter = 10000);
+  occa::memory minDistance(int nbID, const occa::memory &o_bID, std::string type, int maxIter = 10000, const occa::memory &initialDist = nullptr);
+  std::vector<dfloat> minDistance(const std::vector<dlong> &bID, std::string type, int maxIter = 10000, const occa::memory &initialDist = nullptr);
+  
 
   occa::memory intpMatrix(std::vector<dfloat> M);
   void interpolate(const occa::memory& o_z, mesh_t *meshC, occa::memory& o_zC, bool uniform = false, dlong nel = 0);

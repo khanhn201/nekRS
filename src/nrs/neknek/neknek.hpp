@@ -20,6 +20,7 @@ public:
   neknek_t(nrs_t *_nrs, dlong _nsessions, dlong _sessionID);
 
   userMeshReferencePosition_t userMeshReferencePosition = nullptr;
+  std::shared_ptr<pointInterpolation_t> interpolator;
 
   void updateBoundary(int tstep, int stage, double time);
   void exchange(double time, bool allTimeStates = false, bool lag = false);
@@ -205,8 +206,6 @@ private:
 
   // record the time when mesh is set for moving mesh
   double timeMovingMeshSetup = 0.0;
-
-  std::shared_ptr<pointInterpolation_t> interpolator;
 
   occa::kernel copyNekNekPointsKernel;
   occa::kernel computeFluxKernel;

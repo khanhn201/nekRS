@@ -77,8 +77,8 @@ static dfloat coeff[] = {
     0.856,     // sigom2
     0.44,      // gamma2
     //Free-stream limiter
-    0.0,       // edd_free //0.01 for external flows
-    0.0,       // ywlim    //0.5 for external flows
+    0.01,       // edd_free //0.01 for external flows
+    0.5,       // ywlim    //0.5 for external flows
 
     //DES parameters
     0.78,      // cdes1
@@ -237,7 +237,7 @@ void RANSktau::buildKernel(occa::properties _kernelInfo)
   platform->options.setArgs("VELOCITY STRESSFORMULATION", "TRUE");
 }
 
-void RANSktau::updateProperties()
+void RANSktau::updateProperties(const occa::memory &distance)
 {
   nekrsCheck(!setupCalled || !buildKernelCalled,
              MPI_COMM_SELF,
@@ -275,7 +275,8 @@ void RANSktau::updateProperties()
                     o_xt,
                     o_xtq);
 
-  if(movingMesh && cheapWd) o_ywd = mesh->minDistance(wbID.size(), o_wbID, "cheap_dist");
+  if(movingMesh && cheapWd && distance == nullptr) o_ywd = mesh->minDistance(wbID.size(), o_wbID, "cheap_dist");
+  if (distance != nullptr) o_ywd = distance;
 
   mueKernel(mesh->Nelements * mesh->Np, 
             nrs->fieldOffset,

@@ -11,7 +11,7 @@ namespace RANSktau
   void setup(int startFieldIndex);
   void setup(int startFieldIndex, std::string &model);
   void setup(int startFieldIndex, std::string &model, occa::memory &o_ywd);
-  void updateProperties();
+  void updateProperties(const occa::memory &distance = nullptr);
   const deviceMemory<dfloat> o_mue_t();
 }
 

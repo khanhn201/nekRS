@@ -27,6 +27,16 @@ Capabilities:
 * VisIt & Paraview for data analysis and visualization including in-situ support through Ascent
 * Legacy interface
 
+Features of this fork:
+* Fast point interpolation for NekNek moving mesh through `userMeshReferencePosition`
+* Merged RANSktau model from [nandu90's fork][https://github.com/nandu90/nekRS_WF/tree/ktauSSTnext2]
+* Ascent NekNek rendering `ascentUseGlobalComm`
+* Reframe tests
+* Batched findpts (currently not optimized, cost will increase with the number of passive scalar, need to rework it more)
+* `minDistance` across NekNek sessions
+* User provided distance for hybrid RANS/LES models
+
+
 ## Build Instructions
 
 Requirements:

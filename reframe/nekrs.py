@@ -85,7 +85,7 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.ci_mode = nekrs_case.ci_mode
     self.time_limit = '1h'
     self.extra_resources = {
-        'account': {'account': 'EnergyApps'},
+        'account': {'account': 'pe-summer-2025'},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
         # 'nodes': {'nodes': self.num_nodes}
@@ -106,6 +106,22 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.nekrs_binary = os.path.join(self.nekrs_build.binary_path,'nekrs')
     self.executable = f'gpu_tile_compact.sh {self.nekrs_binary}'
     self.executable = f'{self.nekrs_binary}'
+
+
+  @run_before('run')
+  def make_lhelper(self):
+    lhelper_script = """#!/bin/bash
+gpu_id=$(( (PALS_LOCAL_RANKID / 2) % 6 ))
+tile_id=$(( PALS_LOCAL_RANKID % 2 ))
+export ZE_AFFINITY_MASK=$gpu_id.$tile_id
+"$@"
+"""
+    lhelper_path = os.path.join(self.sourcesdir, '.lhelper')
+    with open(lhelper_path, 'w') as f:
+      f.write(lhelper_script)
+      os.chmod(lhelper_path, 0o755)
+    self.executable = f'./.lhelper {self.executable}'
+
 
   def set_environment(self):
     self.env_vars |= {

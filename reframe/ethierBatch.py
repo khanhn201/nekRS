@@ -28,6 +28,7 @@ class NekRSEthierBatchTest(rfm.RunOnlyRegressionTest):
     self.num_tasks_per_node = 12
 
     self.prerun_cmds = ['module load reframe']
+    self.prerun_cmds += ['cd /lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn/reframe']
     self.executable = f'reframe -C /lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn/reframe/aurora_conf.py --exec-policy=serial -c /lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn/reframe/ethier.py -r -v'
 
   @run_after('setup')

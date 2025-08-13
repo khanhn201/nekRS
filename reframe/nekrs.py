@@ -30,7 +30,7 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
       self.install_path = os.path.join(f'{self.stagedir}','install')
       self.binary_path = os.path.join(self.install_path,'bin')
     else:
-      self.sourcesdir = '../'
+      self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
       self.build_system = 'CMake'
             
       self.build_system.flags_from_environ = True
@@ -42,15 +42,11 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
       self.build_system.config_opts = [
         f'-DCMAKE_INSTALL_PREFIX={self.install_path}',
       ]
-      
             
   @sanity_function
   def validate_build(self):
     nekrs_binary = os.path.join(self.binary_path,'nekrs')
     return sn.assert_true(os.path.isfile(nekrs_binary), f'nekRS binary could not be found in path {nekrs_binary}') 
-
-
-
 
 
 class NekRSCase:
@@ -61,8 +57,6 @@ class NekRSCase:
   def name(self): return self._name
   @property
   def directory(self): return self._directory
-
-
 
 
 
@@ -84,11 +78,11 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.num_nodes = nekrs_case.num_nodes
     self.ci_mode = nekrs_case.ci_mode
     self.time_limit = '1h'
+    self.project = self.current_environ.extras.get('project', '')
     self.extra_resources = {
-        'account': {'account': 'pe-summer-2025'},
+        'account': {'account': self.project},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
-        # 'nodes': {'nodes': self.num_nodes}
     }
 
   @run_after('setup')
@@ -97,39 +91,30 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.ranks_per_node = self.current_environ.extras.get('ranks_per_node', 1)
     self.cpu_bind = self.current_environ.extras.get('cpu_bind', '')
 
-  # Need fixture variables, so must call after setup
-  # See _Early access to fixture objects_ here: 
-  # https://reframe-hpc.readthedocs.io/en/stable/regression_test_api.html#reframe.core.builtins.fixture
   @run_after('setup')
   def set_paths_exec(self):
     self.nekrs_home = os.path.realpath(self.nekrs_build.install_path)
     self.nekrs_binary = os.path.join(self.nekrs_build.binary_path,'nekrs')
-    self.executable = f'gpu_tile_compact.sh {self.nekrs_binary}'
     self.executable = f'{self.nekrs_binary}'
-
 
   @run_before('run')
   def make_lhelper(self):
-    lhelper_script = """#!/bin/bash
-gpu_id=$(( (PALS_LOCAL_RANKID / 2) % 6 ))
-tile_id=$(( PALS_LOCAL_RANKID % 2 ))
-export ZE_AFFINITY_MASK=$gpu_id.$tile_id
-"$@"
-"""
-    lhelper_path = os.path.join(self.sourcesdir, '.lhelper')
-    with open(lhelper_path, 'w') as f:
-      f.write(lhelper_script)
-      os.chmod(lhelper_path, 0o755)
-    self.executable = f'./.lhelper {self.executable}'
+    lhelper_script = self.current_environ.extras.get('lhelper_script', '')
+    if lhelper_script != '':
+      lhelper_path = os.path.join(self.sourcesdir, '.lhelper')
+      with open(lhelper_path, 'w') as f:
+        f.write(lhelper_script)
+        os.chmod(lhelper_path, 0o755)
+      self.executable = f'./.lhelper {self.executable}'
 
-
+  @run_before('run')
   def set_environment(self):
     self.env_vars |= {
       'LD_LIBRARY_PATH' : f'$LD_LIBRARY_PATH:{self.nekrs_build.install_path}/lib',
       'NEKRS_HOME' : self.nekrs_home
-      # 'OCCA_DPCPP_COMPILER_FLAGS' : '\"-O3 -fsycl -fsycl-targets=intel_gpu_pvc -ftarget-register-alloc-mode=pvc:auto -fma\"'
     }
        
+  @run_before('run')
   def set_launcher_options(self):
     self.num_tasks = self.num_nodes * self.ranks_per_node
     self.num_tasks_per_node = self.ranks_per_node
@@ -139,6 +124,7 @@ export ZE_AFFINITY_MASK=$gpu_id.$tile_id
         f'--cpu-bind={self.cpu_bind}'
       ]
 
+  @run_before('run')
   def set_executable_options(self):
     self.executable_opts += [
       f'--setup {self.case.name}',
@@ -146,14 +132,6 @@ export ZE_AFFINITY_MASK=$gpu_id.$tile_id
       f'--device-id {self.device_id}',
       f'--cimode {self.ci_mode}'
     ]
-
-  @run_before('run')
-  def setup_run(self):
-    self.set_environment()
-    self.set_launcher_options()
-    self.set_executable_options()
-    # TODO: Add kernel jitting to self.prerun_cmds[]
-
 
   @sanity_function
   def check_exit_code(self):
@@ -166,8 +144,6 @@ export ZE_AFFINITY_MASK=$gpu_id.$tile_id
     solve_times = sn.extractall(r'solve\s+(\S+)s', self.stdout, 1, float)
     fom = 1.0 / solve_times[-1]
     return fom
-
-
 
 
 

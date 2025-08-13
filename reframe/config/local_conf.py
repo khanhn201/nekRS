@@ -32,6 +32,7 @@ site_configuration = {
                 ['CUDAHOSTCXX', 'g++-13'],
             ],
             'extras': {
+                'source_dir': '/home/nekoconn/code/seal/nekRS-khanhn',
                 'prebuilt_dir': '/home/nekoconn/code/seal/reframe-test/install',
                 'cpu_bind': '',
                 'ranks_per_node': 1,

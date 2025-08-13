@@ -50,12 +50,21 @@ site_configuration = {
                 ['FC', 'mpif77'],
                 ['NEKRS_MPI_THREAD_MULTIPLE', '1'],
                 ['NEKRS_GPU_MPI', '0'],
+                ['OCCA_DPCPP_COMPILER_FLAGS', '\"-O3 -fsycl -fsycl-targets=intel_gpu_pvc -ftarget-register-alloc-mode=pvc:auto -fma\"']
             ],
             'extras': {
+                'source_dir': '/lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn',
                 'prebuilt_dir': '/lus/flare/projects/pe-summer-2025/khanhn/reframe-test/install',
                 'cpu_bind': 'list:0-7:8-15:16-23:24-31:32-39:40-47:52-59:60-67:68-75:76-83:84-91:92-99',
                 'ranks_per_node': 12,
                 'backend': 'dpcpp',
+                'project': 'pe-summer-2025',
+                'lhelper_script': """#!/bin/bash
+gpu_id=$(( (PALS_LOCAL_RANKID / 2) % 6 ))
+tile_id=$(( PALS_LOCAL_RANKID % 2 ))
+export ZE_AFFINITY_MASK=$gpu_id.$tile_id
+"$@"
+"""
             }
         }
     ]

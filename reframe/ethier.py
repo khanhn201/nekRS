@@ -9,10 +9,10 @@ class NekRSEthierCase(NekRSCase):
   num_nodes = 1
   ci_mode = 0
 
-  def __init__(self, num_nodes, ci_mode):
+  def __init__(self, num_nodes, ci_mode, directory):
     self.num_nodes = num_nodes
     self.ci_mode = ci_mode
-    super().__init__(name=f'{self.case_name}', directory=f'{self.case_root}/{self.case_name}')
+    super().__init__(name=f'{self.case_name}', directory=directory)
 
 class NekRSEthierTestBuildOnly(NekRSTestBuildOnly):
   num_nodes = variable(int, value=1)
@@ -20,7 +20,9 @@ class NekRSEthierTestBuildOnly(NekRSTestBuildOnly):
   local = True
   def __init__(self):
     self.local=True
-    super().__init__(nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode))
+    self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
+    directory = os.path.join(self.install_path,'examples/ethier')
+    super().__init__(nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode, directory))
 
   @run_after('setup')
   def set_launcher(self):
@@ -34,7 +36,9 @@ class NekRSEthierTest(NekRSTest):
   local = True
     
   def __init__(self):
-    nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode)
+    self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
+    directory = os.path.join(self.install_path,'examples/ethier')
+    nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode, directory)
     super().__init__(nekrs_case)
 
   @run_after('setup')

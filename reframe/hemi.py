@@ -18,6 +18,8 @@ class NekRSHemiTest(NekRSTest):
   # time_steps = 8000
 
   def __init__(self):
+    self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
+    directory = os.path.join(self.install_path,'/examples/hemi')
     super().__init__(nekrs_case=NekRSHemiCase(self.num_nodes))
 
   # @run_after('setup')

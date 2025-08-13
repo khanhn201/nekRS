@@ -17,19 +17,21 @@ class NekRSEthierBatchTest(rfm.RunOnlyRegressionTest):
     self.valid_prog_environs = ['*']
     self.modules = ['cmake']
     self.device_id = 0
+    self.project = self.current_environ.extras.get('project', '')
     self.extra_resources = {
-        'account': {'account': 'pe-summer-2025'},
+        'account': {'account': self.project},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
-        # 'nodes': {'nodes': self.num_nodes}
     }
 
     self.num_tasks = self.num_nodes * 12
     self.num_tasks_per_node = 12
 
+    self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
+    conf_file = os.path.join(self.install_path,'reframe/config/aurora_conf.py')
+    test_file = os.path.join(self.install_path,'reframe/ethier.py')
     self.prerun_cmds = ['module load reframe']
-    self.prerun_cmds += ['cd /lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn/reframe']
-    self.executable = f'reframe -C /lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn/reframe/aurora_conf.py --exec-policy=serial -c /lus/flare/projects/pe-summer-2025/khanhn/nekRS_khanhn/reframe/ethier.py -r -v'
+    self.executable = f'reframe -C {conf_file} --exec-policy=serial -c {test_file} -v -r'
 
   @run_after('setup')
   def set_launcher(self):

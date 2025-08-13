@@ -49,21 +49,10 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
     return sn.assert_true(os.path.isfile(nekrs_binary), f'nekRS binary could not be found in path {nekrs_binary}') 
 
 
-class NekRSCase:
-  def __init__(self, name, directory):
-    self._name = name
-    self._directory = directory
-  @property
-  def name(self): return self._name
-  @property
-  def directory(self): return self._directory
-
-
-
 class NekRSTest(rfm.RunOnlyRegressionTest):
   nekrs_build = fixture(NekRSBuild, scope='environment')
 
-  def __init__(self, nekrs_case):
+  def __init__(self, case_name, num_nodes, ci_mode):
     super().__init__()
     self.descr = 'nekRS test'
     self.maintainers = []
@@ -71,25 +60,30 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.valid_systems = ['*']
     self.valid_prog_environs = ['*']
     self.modules = ['cmake']
-    self.case = nekrs_case
-    self.sourcesdir = nekrs_case.directory
-    self.readonly_files = [ f'{nekrs_case.name}.re2' ]
+    self.case_name = case_name
     self.device_id = 0
-    self.num_nodes = nekrs_case.num_nodes
-    self.ci_mode = nekrs_case.ci_mode
+    self.num_nodes = num_nodes
+    self.ci_mode = ci_mode
     self.time_limit = '1h'
-    self.project = self.current_environ.extras.get('project', '')
-    self.extra_resources = {
-        'account': {'account': self.project},
-        'queue': {'queue': 'debug'},
-        'filesystem': {'filesystem': 'home:flare'},
-    }
+
+  def set_directory(self, directory):
+    self.sourcesdir = directory
+    self.readonly_files = [ f'{self.case_name}.re2' ]
 
   @run_after('setup')
   def read_partition_vars(self):
     self.backend = self.current_environ.extras.get('backend', 'serial')
     self.ranks_per_node = self.current_environ.extras.get('ranks_per_node', 1)
     self.cpu_bind = self.current_environ.extras.get('cpu_bind', '')
+
+  @run_after('setup')
+  def set_extra_resources(self):
+    self.project = self.current_environ.extras.get('project', '')
+    self.extra_resources = {
+        'account': {'account': self.project},
+        'queue': {'queue': 'debug'},
+        'filesystem': {'filesystem': 'home:flare'},
+    }
 
   @run_after('setup')
   def set_paths_exec(self):
@@ -101,7 +95,7 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
   def make_lhelper(self):
     lhelper_script = self.current_environ.extras.get('lhelper_script', '')
     if lhelper_script != '':
-      lhelper_path = os.path.join(self.sourcesdir, '.lhelper')
+      lhelper_path = os.path.join(self.stagedir, '.lhelper')
       with open(lhelper_path, 'w') as f:
         f.write(lhelper_script)
         os.chmod(lhelper_path, 0o755)
@@ -127,7 +121,7 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
   @run_before('run')
   def set_executable_options(self):
     self.executable_opts += [
-      f'--setup {self.case.name}',
+      f'--setup {self.case_name}',
       f'--backend {self.backend}',
       f'--device-id {self.device_id}',
       f'--cimode {self.ci_mode}'
@@ -148,12 +142,12 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
 
 
 class NekRSTestBuildOnly(NekRSTest):
-  def __init__(self, nekrs_case):
-    super().__init__(nekrs_case)
+  def __init__(self, case_name, num_nodes, ci_mode):
+    super().__init__(case_name, num_nodes, ci_mode)
 
   def set_executable_options(self):
     self.executable_opts += [
-      f'--setup {self.case.name}',
+      f'--setup {self.case_name}',
       f'--backend {self.backend}',
       f'--device-id {self.device_id}',
       f'--cimode {self.ci_mode}',

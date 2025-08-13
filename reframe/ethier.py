@@ -1,18 +1,9 @@
+import os
+
 import reframe as rfm
 import reframe.utility.sanity as sn
 from reframe.core.backends import getlauncher
-from nekrs import NekRSCase, NekRSTest, NekRSTestBuildOnly
-
-class NekRSEthierCase(NekRSCase):
-  case_name = 'ethier'
-  case_root = '../examples'
-  num_nodes = 1
-  ci_mode = 0
-
-  def __init__(self, num_nodes, ci_mode, directory):
-    self.num_nodes = num_nodes
-    self.ci_mode = ci_mode
-    super().__init__(name=f'{self.case_name}', directory=directory)
+from nekrs import NekRSTest, NekRSTestBuildOnly
 
 class NekRSEthierTestBuildOnly(NekRSTestBuildOnly):
   num_nodes = variable(int, value=1)
@@ -20,13 +11,14 @@ class NekRSEthierTestBuildOnly(NekRSTestBuildOnly):
   local = True
   def __init__(self):
     self.local=True
-    self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
-    directory = os.path.join(self.install_path,'examples/ethier')
-    super().__init__(nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode, directory))
+    super().__init__('ethier', self.num_nodes, self.ci_mode)
 
   @run_after('setup')
   def set_launcher(self):
     self.job.launcher = getlauncher('mpirun')()
+    sourcesdir = self.current_environ.extras.get('source_dir', '../')
+    directory = os.path.join(sourcesdir,'examples/ethier')
+    self.set_directory(directory)
 
 @rfm.simple_test
 class NekRSEthierTest(NekRSTest):
@@ -36,10 +28,7 @@ class NekRSEthierTest(NekRSTest):
   local = True
     
   def __init__(self):
-    self.sourcesdir = self.current_environ.extras.get('source_dir', '../')
-    directory = os.path.join(self.install_path,'examples/ethier')
-    nekrs_case=NekRSEthierCase(self.num_nodes, self.ci_mode, directory)
-    super().__init__(nekrs_case)
+    super().__init__('ethier', self.num_nodes, self.ci_mode)
 
   @run_after('setup')
   def set_launcher(self):

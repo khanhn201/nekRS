@@ -15,3 +15,9 @@ reframe -C config/aurora_conf.py -c ethierBatch.py -v -r
 ```
 reframe -C config/local_conf.py -c ethier.py --exec-policy=serial -v -r
 ```
+
+List previous results
+
+```
+reframe --list-stored-testcases=now-1d:now/mean:/ -C config/local_conf.py 
+```

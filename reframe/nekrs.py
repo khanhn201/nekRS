@@ -136,7 +136,10 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
   @performance_function('fom')
   def fom(self):
     solve_times = sn.extractall(r'solve\s+(\S+)s', self.stdout, 1, float)
-    fom = 1.0 / solve_times[-1]
+    if len(sn.evaluate(solve_times)) > 0:
+      fom = 1.0 / solve_times[-1]
+    else:
+      fom = 1.0
     return fom
 
 
@@ -153,6 +156,3 @@ class NekRSTestBuildOnly(NekRSTest):
       f'--cimode {self.ci_mode}',
       f'--build-only {self.num_tasks}'
     ]
-  @performance_function('fom')
-  def fom(self):
-    return 0.0

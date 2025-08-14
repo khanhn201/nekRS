@@ -1,9 +1,10 @@
+import os
+import os.path
+
 import reframe as rfm
 import reframe.utility.sanity as sn
 import reframe.utility.osext as osext
 
-import os.path 
-import os
 
 class NekRSBuild(rfm.CompileOnlyRegressionTest):
   use_prebuilt = variable(bool, value=True)
@@ -15,7 +16,6 @@ class NekRSBuild(rfm.CompileOnlyRegressionTest):
     self.tags = {'nekrs'}
     self.modules = ['cmake']
     self.valid_systems = ['*']
-    # self.valid_prog_environs = ['local']
 
   # Need stagedir, so must call after setup phase
   # https://reframe-hpc.readthedocs.io/en/stable/regression_test_api.html#reframe.core.pipeline.RegressionTest.stagedir
@@ -61,26 +61,22 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.valid_prog_environs = ['*']
     self.modules = ['cmake']
     self.case_name = case_name
-    self.device_id = 0
     self.num_nodes = num_nodes
     self.ci_mode = ci_mode
-    self.time_limit = '1h'
+    self.device_id = 0
 
   def set_directory(self, directory):
     self.sourcesdir = directory
     self.readonly_files = [ f'{self.case_name}.re2' ]
 
   @run_after('setup')
-  def read_partition_vars(self):
+  def read_extras(self):
     self.backend = self.current_environ.extras.get('backend', 'serial')
     self.ranks_per_node = self.current_environ.extras.get('ranks_per_node', 1)
     self.cpu_bind = self.current_environ.extras.get('cpu_bind', '')
-
-  @run_after('setup')
-  def set_extra_resources(self):
-    self.project = self.current_environ.extras.get('project', '')
+    project = self.current_environ.extras.get('project', '')
     self.extra_resources = {
-        'account': {'account': self.project},
+        'account': {'account': project},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
     }
@@ -109,7 +105,8 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     }
        
   @run_before('run')
-  def set_launcher_options(self):
+  def set_scheduler_and_launcher_options(self):
+    self.time_limit = '1h'
     self.num_tasks = self.num_nodes * self.ranks_per_node
     self.num_tasks_per_node = self.ranks_per_node
     if self.cpu_bind != '':
@@ -148,11 +145,8 @@ class NekRSTestBuildOnly(NekRSTest):
   def __init__(self, case_name, num_nodes, ci_mode):
     super().__init__(case_name, num_nodes, ci_mode)
 
-  def set_executable_options(self):
+  @run_before('run')
+  def set_build_only(self):
     self.executable_opts += [
-      f'--setup {self.case_name}',
-      f'--backend {self.backend}',
-      f'--device-id {self.device_id}',
-      f'--cimode {self.ci_mode}',
       f'--build-only {self.num_tasks}'
     ]

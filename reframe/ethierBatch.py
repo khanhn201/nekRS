@@ -2,36 +2,40 @@ import os
 
 import reframe as rfm
 from reframe.core.backends import getlauncher
-import reframe.utility.sanity as sn
 
 @rfm.simple_test
 class NekRSEthierBatchTest(rfm.RunOnlyRegressionTest):
   num_nodes = variable(int, value=1)
-  time_limit = '1h'
     
   def __init__(self):
     super().__init__()
-    self.descr = 'nekRS test'
+    self.descr = 'nekRS Ethier batch test'
     self.maintainers = []
     self.tags = {'nekrs'}
+    self.modules = ['cmake']
     self.valid_systems = ['*']
     self.valid_prog_environs = ['*']
-    self.modules = ['cmake']
-    self.device_id = 0
-
-    self.num_tasks = self.num_nodes * 12
-    self.num_tasks_per_node = 12
-
 
   @run_after('setup')
-  def set_launcher(self):
-    self.project = self.current_environ.extras.get('project', '')
+  def read_extras(self):
+    self.ranks_per_node = self.current_environ.extras.get('ranks_per_node', 1)
+    project = self.current_environ.extras.get('project', '')
     self.extra_resources = {
-        'account': {'account': self.project},
+        'account': {'account': project},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
     }
+
+  @run_after('setup')
+  def set_scheduler_and_launcher_options(self):
+    self.time_limit = '1h'
+    self.num_tasks = self.num_nodes * self.ranks_per_node
+    self.num_tasks_per_node = self.ranks_per_node
+
     self.job.launcher = getlauncher('local')()
+
+  @run_after('setup')
+  def change_sourcedir(self):
     sourcesdir = self.current_environ.extras.get('source_dir', '../')
     conf_file = os.path.join(sourcesdir,'reframe/config/aurora_conf.py')
     test_file = os.path.join(sourcesdir,'reframe/ethier.py')

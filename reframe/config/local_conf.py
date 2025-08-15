@@ -1,9 +1,12 @@
+import datetime
+today_str = datetime.date.today().strftime("%Y-%m-%d")
+
 site_configuration = {
     'systems': [
         {
             'name': 'local',
-            'hostnames': ['AZKi'],
-            'prefix': '/home/nekoconn/code/seal/reframe-test/',
+            'hostnames': ['.*'],
+            'prefix': f'/home/nekoconn/code/seal/reframe-test/{today_str}',
             'partitions': [
                 {
                     'name': 'default',

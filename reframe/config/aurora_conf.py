@@ -1,9 +1,12 @@
+import datetime
+today_str = datetime.date.today().strftime("%Y-%m-%d")
+
 site_configuration = {
     'systems': [
         {
             'name': 'aurora',
             'hostnames': ['.*'],
-            'prefix': '/lus/flare/projects/pe-summer-2025/khanhn/reframe-test',
+            'prefix': f'/lus/flare/projects/pe-summer-2025/khanhn/reframe-test/{today_str}',
             'modules_system': 'lmod',
             'partitions': [
                 {

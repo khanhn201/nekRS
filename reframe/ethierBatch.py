@@ -24,6 +24,7 @@ class NekRSEthierBatchTest(rfm.RunOnlyRegressionTest):
         'account': {'account': project},
         'queue': {'queue': 'debug'},
         'filesystem': {'filesystem': 'home:flare'},
+        'num_nodes': {'num_nodes': self.num_nodes},
     }
 
   @run_after('setup')

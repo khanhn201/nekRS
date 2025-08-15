@@ -27,6 +27,10 @@ site_configuration = {
                         {
                             'name': 'queue',
                             'options': ['-q {queue}']
+                        },
+                        {
+                            'name': 'num_nodes',
+                            'options': ['-l select={num_nodes}']
                         }
                     ]
                 }

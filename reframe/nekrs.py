@@ -77,8 +77,9 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     project = self.current_environ.extras.get('project', '')
     self.extra_resources = {
         'account': {'account': project},
-        'queue': {'queue': 'debug'},
+        'queue': {'queue': 'prod'},
         'filesystem': {'filesystem': 'home:flare'},
+        'num_nodes': {'num_nodes': self.num_nodes},
     }
 
   @run_after('setup')
@@ -86,6 +87,17 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
     self.nekrs_home = os.path.realpath(self.nekrs_build.install_path)
     self.nekrs_binary = os.path.join(self.nekrs_build.binary_path,'nekrs')
     self.executable = f'{self.nekrs_binary}'
+
+  @run_before('run')
+  def set_scheduler_and_launcher_options(self):
+    self.num_tasks = self.num_nodes * self.ranks_per_node  
+    self.num_tasks_per_node = self.ranks_per_node
+    self.time_limit = '1h'
+    if self.cpu_bind != '':
+      self.job.launcher.options += [
+        f'-ppn {self.ranks_per_node}',
+        f'--cpu-bind={self.cpu_bind}'
+      ]
 
   @run_before('run')
   def make_lhelper(self):
@@ -104,16 +116,6 @@ class NekRSTest(rfm.RunOnlyRegressionTest):
       'NEKRS_HOME' : self.nekrs_home
     }
        
-  @run_before('run')
-  def set_scheduler_and_launcher_options(self):
-    self.time_limit = '1h'
-    self.num_tasks = self.num_nodes * self.ranks_per_node
-    self.num_tasks_per_node = self.ranks_per_node
-    if self.cpu_bind != '':
-      self.job.launcher.options += [
-        f'-ppn {self.ranks_per_node}',
-        f'--cpu-bind={self.cpu_bind}'
-      ]
 
   @run_before('run')
   def set_executable_options(self):
